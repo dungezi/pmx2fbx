@@ -1,0 +1,7 @@
+{
+  "name": "Pmx2Fbx.Editor",
+  "rootNamespace": "Pmx2Fbx",
+  "references": [],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": true
+}

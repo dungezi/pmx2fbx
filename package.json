@@ -1,0 +1,10 @@
+{
+  "name": "com.pmx2fbx.converter",
+  "version": "0.2.0",
+  "displayName": "PMX + XPS to FBX / VRChat PC",
+  "description": "PMX 2.0/2.1 and auxiliary XPS binary/ASCII conversion to FBX with skinning, materials and optional validated VRChat PC humanoid preparation.",
+  "unity": "2022.3",
+  "dependencies": { "com.unity.formats.fbx": "4.2.1" },
+  "author": { "name": "PMX2FBX" },
+  "license": "MIT"
+}
