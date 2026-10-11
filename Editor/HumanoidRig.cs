@@ -92,8 +92,9 @@ namespace Pmx2Fbx
         }
         public static void Repair(GameObject root, Dictionary<HumanBodyBones, Transform> map, ConversionReport report)
         {
-            if (!map.ContainsKey(HumanBodyBones.Spine) || !map.ContainsKey(HumanBodyBones.Hips) || !map.ContainsKey(HumanBodyBones.Head))
-                throw new InvalidDataException("无法找到 Hips / Spine / Head。请在骨骼映射中手动指定。");
+            var unmapped = new[] { HumanBodyBones.Hips, HumanBodyBones.Spine, HumanBodyBones.Head }.Where(b => !map.ContainsKey(b)).ToArray();
+            if (unmapped.Length > 0)
+                throw new InvalidDataException("VRChat 骨骼尚未映射：" + string.Join(", ", unmapped) + "。请在骨骼映射中手动指定；仅转换 FBX 时可取消 VRChat PC 适配。");
             var spine = map[HumanBodyBones.Spine]; var head = map[HumanBodyBones.Head];
             if (!map.ContainsKey(HumanBodyBones.Chest)) Create(map, HumanBodyBones.Chest, Vector3.Lerp(spine.position, head.position, .45f), root, report);
             if (!map.ContainsKey(HumanBodyBones.Neck)) Create(map, HumanBodyBones.Neck, Vector3.Lerp(map[HumanBodyBones.Chest].position, head.position, .75f), root, report);

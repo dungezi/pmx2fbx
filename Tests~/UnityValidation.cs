@@ -88,6 +88,19 @@ public static class UnityValidation
                 var staticResult = PmxConverter.Convert(xpsPath, "Assets/Converted", new ConversionOptions { VrChat=false, Scale=1 });
                 Check(staticResult.ConversionSucceeded, "XPS unrigged " + version + ": " + string.Join("; ", staticResult.Errors));
             }
+            string damagedPath = "Assets/Fixtures/repaired-normals.xps";
+            File.WriteAllBytes(damagedPath, XpsFixture.Create(badNormalKind:1).Concat(new byte[] { 1, 64, 1, 32, 0 }).ToArray());
+            var repairedNormals = XpsConverter.Convert(damagedPath, "Assets/Converted");
+            Check(repairedNormals.ConversionSucceeded && repairedNormals.Warnings.Any(w => w.Contains("法线")) && repairedNormals.Warnings.Any(w => w.Contains("末尾")), "Repair invalid normals and report footer");
+            var repairedMesh = AssetDatabase.LoadAssetAtPath<GameObject>(repairedNormals.Prefab).GetComponentInChildren<SkinnedMeshRenderer>().sharedMesh;
+            Check(repairedMesh.normals.All(n => Finite(n.x) && Finite(n.y) && Finite(n.z) && n.sqrMagnitude > .9f), "Repaired FBX normals remain finite and normalized");
+            CheckTriangleValidation();
+            var args = Environment.GetCommandLineArgs(); int externalFlag = Array.IndexOf(args, "-pmx2fbxRealXps");
+            if (externalFlag >= 0)
+            {
+                if (externalFlag + 1 >= args.Length) throw new ArgumentException("Missing local XPS model path.");
+                VerifyExternalXps(args[externalFlag + 1]);
+            }
             string shaderFolder = AssetDatabase.IsValidFolder("Assets/PMX2FBX/Shaders") ? "Assets/PMX2FBX/Shaders/" : "Packages/com.pmx2fbx.converter/Shaders/";
             foreach (var path in new[] { shaderFolder + "PcToon.shader", shaderFolder + "PcToonTransparent.shader" })
             {
@@ -104,4 +117,44 @@ public static class UnityValidation
         }
     }
     private static void Check(bool condition, string label) { if (!condition) throw new Exception(label); }
+    private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
+    private static void CheckTriangleValidation()
+    {
+        var root = new GameObject("TriangleValidation"); var original = new Mesh(); var imported = new Mesh();
+        try
+        {
+            original.vertices = imported.vertices = new[] { Vector3.zero, Vector3.right, Vector3.up };
+            original.triangles = new[] { 0, 1, 2, 0, 0, 1 }; imported.triangles = new[] { 0, 1, 2 };
+            imported.boneWeights = Enumerable.Repeat(new BoneWeight { weight0=1 }, 3).ToArray();
+            var renderer = root.AddComponent<SkinnedMeshRenderer>(); renderer.sharedMesh = imported; renderer.bones = new[] {root.transform};
+            var verify = typeof(PmxConverter).GetMethod("VerifyImported", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            var report = new ConversionReport(); verify.Invoke(null, new object[] {root, original, report});
+            Check(report.Triangles == 1 && report.Warnings.Any(w => w.Contains("退化")), "Accept only confirmed degenerate-face cleanup");
+            original.triangles = new[] { 0, 1, 2, 0, 2, 1 };
+            bool rejected = false;
+            try { verify.Invoke(null, new object[] {root, original, new ConversionReport()}); }
+            catch (System.Reflection.TargetInvocationException e) { rejected = e.InnerException is InvalidOperationException; }
+            Check(rejected, "Reject removal of a valid triangle");
+        }
+        finally { UnityEngine.Object.DestroyImmediate(root); UnityEngine.Object.DestroyImmediate(original); UnityEngine.Object.DestroyImmediate(imported); }
+    }
+    private static void VerifyExternalXps(string sourcePath)
+    {
+        var source = XpsReader.Read(sourcePath);
+        var result = XpsConverter.Convert(sourcePath, "Assets/ExternalValidation");
+        Check(result.ConversionSucceeded, "Local XPS round trip: " + string.Join("; ", result.Errors));
+        var skin = AssetDatabase.LoadAssetAtPath<GameObject>(result.Prefab).GetComponentInChildren<SkinnedMeshRenderer>();
+        var mesh = skin.sharedMesh;
+        Check(mesh.triangles.Length / 3 == result.Triangles && mesh.subMeshCount == source.Materials.Length && skin.bones.Length == source.Bones.Length, "Local XPS faces/material slots/bones verified");
+        Check(mesh.normals.All(n => Finite(n.x) && Finite(n.y) && Finite(n.z) && n.sqrMagnitude > .9f), "Local XPS finite normals");
+        Check(skin.sharedMaterials.All(m => m && m.mainTexture), "Local XPS texture references retained");
+        var instance = (GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(result.Prefab));
+        var baked = new Mesh(); instance.GetComponentInChildren<SkinnedMeshRenderer>().BakeMesh(baked);
+        Check(baked.vertices.Zip(mesh.vertices,(a,b)=>Vector3.Distance(a,b)).Max() < .001f, "Local XPS bind pose after reimport");
+        UnityEngine.Object.DestroyImmediate(baked); UnityEngine.Object.DestroyImmediate(instance);
+        File.WriteAllText("external-model-validation-result.json", result.ToJson());
+        var map = HumanoidRig.AutoMap(source);
+        var missing = HumanoidRig.Required.Where(h => !map.ContainsKey(h)).ToArray();
+        Debug.Log("PMX2FBX_LOCAL_XPS_VALIDATION_PASS: " + result.Fbx + "; auto-mapping missing: " + string.Join(", ", missing));
+    }
 }

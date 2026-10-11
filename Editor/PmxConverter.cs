@@ -115,14 +115,42 @@ namespace Pmx2Fbx
             var renderers = root.GetComponentsInChildren<SkinnedMeshRenderer>(true);
             if (renderers.Length != 1 || !renderers[0].sharedMesh) throw new InvalidOperationException("FBX 蒙皮网格丢失或数量异常。");
             var mesh = renderers[0].sharedMesh;
-            if (mesh.triangles.Length != original.triangles.Length || mesh.subMeshCount != original.subMeshCount)
-                throw new InvalidOperationException("FBX 面数或材质槽在导出中发生变化。");
+            if (mesh.subMeshCount != original.subMeshCount)
+                throw new InvalidOperationException("FBX 材质槽在导出中发生变化。");
+            int removed = 0;
+            for (int s = 0; s < original.subMeshCount; s++)
+            {
+                var sourceIndices = original.GetTriangles(s); var importedIndices = mesh.GetTriangles(s);
+                int difference = (sourceIndices.Length - importedIndices.Length) / 3;
+                if (difference == 0) continue;
+                // FBX/Unity can discard zero-area triangles. Verify each material group,
+                // retaining the strict count check for every non-degenerate triangle.
+                int sourceDegenerate = CountDegenerate(original.vertices, sourceIndices);
+                int importedDegenerate = CountDegenerate(mesh.vertices, importedIndices);
+                if (difference < 0 || difference > sourceDegenerate || sourceDegenerate - importedDegenerate != difference)
+                    throw new InvalidOperationException("FBX 材质槽 " + s + " 的有效三角面数量发生变化，转换结果未通过检查。");
+                removed += difference;
+            }
+            if (removed > 0) report.Warnings.Add("FBX 重新导入时移除了 " + removed + " 个零面积退化三角面；已按材质槽核对，其余有效面数保持一致。");
+            report.Triangles = mesh.triangles.Length / 3;
             if (renderers[0].bones.Length == 0 || mesh.boneWeights.Length != mesh.vertexCount)
                 throw new InvalidOperationException("FBX 蒙皮或骨骼丢失。");
             for (int i = 0; i < original.blendShapeCount; i++)
                 if (mesh.GetBlendShapeIndex(original.GetBlendShapeName(i)) < 0)
                     throw new InvalidOperationException("FBX 表情丢失：" + original.GetBlendShapeName(i));
             report.Infos.Add("FBX 重新导入后网格面数、材质槽、蒙皮与 BlendShape 检查通过。");
+        }
+        private static int CountDegenerate(Vector3[] vertices, int[] indices)
+        {
+            int count = 0;
+            for (int i = 0; i < indices.Length; i += 3)
+            {
+                var a = vertices[indices[i]]; var b = vertices[indices[i + 1]]; var c = vertices[indices[i + 2]];
+                double ux = (double)b.x - a.x, uy = (double)b.y - a.y, uz = (double)b.z - a.z;
+                double vx = (double)c.x - a.x, vy = (double)c.y - a.y, vz = (double)c.z - a.z;
+                if (uy * vz - uz * vy == 0 && uz * vx - ux * vz == 0 && ux * vy - uy * vx == 0) count++;
+            }
+            return count;
         }
         private static string Mouth(PmxModel source)
         {

@@ -17,3 +17,13 @@ bin/
 *.pdb
 *.key
 *.pem
+# Local user models and textures are never included in source publication.
+/*.xps
+/*.pmx
+/*.mesh
+/*.ascii
+/*.png
+/*.jpg
+/*.jpeg
+/*.tga
+/*.dds

@@ -58,6 +58,23 @@ public static class CoreTests
         string plain = "0\n1\nplain\n0\n0\n3\n0 0 0\n0 0 1\n255 255 255 255\n1 0 0\n0 0 1\n255 255 255 255\n0 1 0\n0 0 1\n255 255 255 255\n1\n0 1 2\n";
         var plainModel = XpsReader.Read(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(plain)), true);
         Expect(plainModel.Vertices.Length == 3 && plainModel.Vertices[0].ExtraUvs.Length == 0 && plainModel.Materials[0].Texture == -1, "Independent untextured ASCII fixture without UVs");
+        foreach (bool ascii in new[] { false, true })
+        {
+            foreach (int kind in new[] { 1, 2, 3 })
+            {
+                var repaired = XpsReader.Read(new MemoryStream(XpsFixture.Create(ascii:ascii, badNormalKind:kind)), ascii);
+                var n = repaired.Vertices[0].Normal;
+                Expect(Math.Abs(n.Y - 1f) < 1e-5f && n.X == 0 && n.Z == 0 && repaired.Warnings.Exists(w => w.Contains("法线")), "Reconstruct invalid normal from triangle: " + ascii + "/" + kind);
+                Expect(repaired.Vertices[1].Normal.Z == 1 && repaired.Vertices[1].Normal.Y == 0, "Keep authored normal intact");
+            }
+            RejectXps(XpsFixture.Create(ascii:ascii, badPosition:true), ascii, "non-finite position remains invalid");
+        }
+        var withFooter = XpsFixture.Create().Concat(new byte[] { 1, 64, 1, 32, 0, 0, 0 }).ToArray();
+        var footerModel = XpsReader.Read(new MemoryStream(withFooter));
+        Expect(footerModel.Vertices.Length == 6 && footerModel.Warnings.Exists(w => w.Contains("末尾 7 字节")), "Report optional binary footer after complete meshes");
+        string degenerate = plain.Replace("1 0 0\n", "0 0 0\n").Replace("0 1 0\n", "0 0 0\n").Replace("0 0 1\n", "0 0 0\n");
+        var fallbackModel = XpsReader.Read(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(degenerate)), true);
+        Expect(fallbackModel.Vertices.All(v => v.Normal.Y == 1) && fallbackModel.Warnings.Exists(w => w.Contains("相邻面")), "Degenerate faces use finite fallback normals");
         Console.WriteLine("PASS: " + passed + " PMX + XPS core assertions");
         return 0;
     }

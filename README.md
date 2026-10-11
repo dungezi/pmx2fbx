@@ -8,7 +8,7 @@ Unity 编辑器插件：选择 PMX，快速生成带骨骼、蒙皮、材质、�
 
 ### Unitypackage 版本
 
-1. 在 Unity 2022.3 项目中双击 `PMX2FBX-0.2.0.unitypackage`，或选择 **Assets → Import Package → Custom Package**。
+1. 在 Unity 2022.3 项目中双击 `PMX2FBX-0.2.1.unitypackage`，或选择 **Assets → Import Package → Custom Package**。
 2. 导入全部文件，插件位于 `Assets/PMX2FBX`。
 3. 打开 **Tools → PMX to FBX → 转换 PMX 模型**。若项目没有 FBX Exporter，点击窗口中的 **安装 FBX Exporter**，等待 Package Manager 下载和编译完成。
 4. 按下方流程转换模型。已有可用的 FBX Exporter 时会直接使用它。
@@ -18,7 +18,7 @@ Unity 编辑器插件：选择 PMX，快速生成带骨骼、蒙皮、材质、�
 ### Package Manager 版本
 
 1. 在 Unity 打开 **Window → Package Manager**。
-2. 点击 **+ → Add package from tarball**，选择发行文件 `com.pmx2fbx.converter-0.2.0.tgz`。Unity 会安装官方 FBX Exporter 4.2.1 及其依赖。
+2. 点击 **+ → Add package from tarball**，选择发行文件 `com.pmx2fbx.converter-0.2.1.tgz`。Unity 会安装官方 FBX Exporter 4.2.1 及其依赖。
 3. 若直接使用源码，选择 **Add package from disk**，打开本目录的 `package.json`。
 4. 为生成带 Avatar Descriptor 的头像，先通过 VRChat Creator Companion 创建 **Avatars** 项目并安装 Avatars SDK。SDK 是可选依赖：没有 SDK 仍可转换模型。
 
@@ -59,8 +59,11 @@ XPS 使用相同的 FBX 导出、贴图复制、材质重映射、独立输出�
 - 超过 4 个骨骼影响时合并重复影响，保留最高 4 项并归一化，在报告中提示。未绑定的网格通过虚拟骨骼导出。
 - 保持 XPS 的 Y 轴朝上和原坐标，翻转 UV 的 V；不同来源模型的朝向可用 **额外旋转 180°** 修正。
 - XPS 文件不携带 PMX 的表情数据，本功能不生成 BlendShape 或完整口型。原有 PMX 功能保持可用。
+- 0.2.1 起：无效（NaN / Infinity）或零长度顶点法线会按相邻三角面重建，其他原法线保留；无可用相邻面时使用有限的向上法线并报告。顶点位置、UV 和蒙皮权重仍拒绝非有限数值。
+- 完整网格读取后，二进制文件的尾部附加数据可忽略并报告；它不会导出，也不会用于修补缺失的网格字段。
+- FBX / Unity 可能去掉零面积退化三角面。转换后逐材质槽检查：仅这类面被移除时给出警告并记录最终面数；有效面数或材质槽发生其他变化仍报错。
 
-升级 0.1.0 的 Assets 安装可直接导入 0.2.0 包，保留原有文件 GUID。
+已有 Assets 安装可直接导入新版包，保留原有文件 GUID。
 
 ## VRChat PC 选项做什么
 

@@ -10,7 +10,8 @@ namespace Pmx2Fbx.Tests
     public static class XpsFixture
     {
         public static byte[] Create(int version = 3, bool ascii = false, bool humanoid = false, bool noBones = false,
-            bool badParent = false, bool badFace = false, bool badWeight = false, bool manyWeights = false)
+            bool badParent = false, bool badFace = false, bool badWeight = false, bool manyWeights = false,
+            int badNormalKind = 0, bool badPosition = false)
         {
             var model = PmxReader.Read(new MemoryStream(PmxFixture.Create(humanoid: humanoid)));
             string[] names = { "root hips", "spine lower", "spine upper", "head neck lower", "head neck upper",
@@ -51,7 +52,11 @@ namespace Pmx2Fbx.Tests
                     int count = model.Vertices.Length / 2; integer(count);
                     for (int i = 0; i < count; i++)
                     {
-                        var v = model.Vertices[mesh * count + i]; vector(v.Position); vector(v.Normal);
+                        var v = model.Vertices[mesh * count + i];
+                        if (badPosition && mesh == 0 && i == 0) floats(new[] { float.NaN, 0f, 0f }); else vector(v.Position);
+                        if (badNormalKind != 0 && mesh == 0 && i == 0)
+                            floats(new[] { badNormalKind == 1 ? float.NaN : badNormalKind == 2 ? float.PositiveInfinity : 0f, 0f, 0f });
+                        else vector(v.Normal);
                         if (ascii) text.WriteLine("120 200 255 255"); else binary.Write(new byte[] { 120, 200, 255, 255 });
                         floats(new[] { .2f, .3f }); if (!ascii && version <= 1) floats(new[] { 1f, 0f, 0f, 1f });
                         floats(new[] { .6f, .7f }); if (!ascii && version <= 1) floats(new[] { 1f, 0f, 0f, 1f });

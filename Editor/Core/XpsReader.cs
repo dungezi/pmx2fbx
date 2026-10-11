@@ -73,33 +73,34 @@ namespace Pmx2Fbx.Core
                 throw new InvalidDataException("XPS " + label + " 数量无效。");
             return value;
         }
-        private float Number(string value)
+        private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
+        private float Number(string value, bool allowNonFinite = false)
         {
             if (!float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float number)
-                || float.IsNaN(number) || float.IsInfinity(number)) throw new InvalidDataException("XPS 数值无效。");
+                || !allowNonFinite && !Finite(number)) throw new InvalidDataException("XPS 数值无效。");
             return number;
         }
-        private float Float()
+        private float Float(bool allowNonFinite = false)
         {
             float value = binary.ReadSingle();
-            if (float.IsNaN(value) || float.IsInfinity(value)) throw new InvalidDataException("XPS 含非有限数值。");
+            if (!allowNonFinite && !Finite(value)) throw new InvalidDataException("XPS 含非有限数值（偏移 " + (stream.Position - 4) + " 字节）。");
             return value;
         }
-        private float[] Floats(int length)
+        private float[] Floats(int length, bool allowNonFinite = false)
         {
             if (ascii != null)
             {
                 var values = Values();
                 if (values.Length != length) throw new InvalidDataException("XPS 第 " + lineNumber + " 行应有 " + length + " 个数值。");
-                return values.Select(Number).ToArray();
+                return values.Select(v => Number(v, allowNonFinite)).ToArray();
             }
             var result = new float[length];
-            for (int i = 0; i < length; i++) result[i] = Float();
+            for (int i = 0; i < length; i++) result[i] = Float(allowNonFinite);
             return result;
         }
-        private Float3 Vector()
+        private Float3 Vector(bool allowNonFinite = false)
         {
-            var values = Floats(3); return new Float3(values[0], values[1], values[2]);
+            var values = Floats(3, allowNonFinite); return new Float3(values[0], values[1], values[2]);
         }
         private void Skip(long bytes)
         {
@@ -148,7 +149,8 @@ namespace Pmx2Fbx.Core
             model.Vertices = vertices.ToArray(); model.Indices = faces.ToArray();
             model.Materials = materials.ToArray(); model.Textures = textures.ToArray();
             if (reducedWeights) model.Warnings.Add("部分 XPS 顶点超过 4 个骨骼影响，已合并重复权重并保留最高 4 项，随后归一化。");
-            if (ascii == null && Remaining != 0) throw new InvalidDataException("XPS 有未解析的尾部数据，版本或顶点布局可能不兼容。");
+            if (ascii == null && Remaining != 0)
+                model.Warnings.Add("XPS 网格已完整读取；忽略文件末尾 " + Remaining + " 字节的附加数据，附加信息不会导出。");
             if (ascii != null)
             {
                 string extra;
@@ -187,9 +189,14 @@ namespace Pmx2Fbx.Core
             int count = Count("顶点", 5000000, 28 + uvCount * (tangents ? 24 : 8));
             if ((long)vertices.Count + count > 5000000) throw new InvalidDataException("XPS 合并后的顶点数量过大。");
             int offset = vertices.Count;
+            var invalidNormals = new List<int>();
             for (int i = 0; i < count; i++)
             {
-                var v = new PmxVertex { Position = Vector(), Normal = Vector(), Color = ReadColor(), ExtraUvs = new float[Math.Max(0, uvCount - 1)][] };
+                var v = new PmxVertex { Position = Vector(), Normal = Vector(true), Color = ReadColor(), ExtraUvs = new float[Math.Max(0, uvCount - 1)][] };
+                var normal = v.Normal;
+                double lengthSquared = (double)normal.X * normal.X + (double)normal.Y * normal.Y + (double)normal.Z * normal.Z;
+                if (!Finite(normal.X) || !Finite(normal.Y) || !Finite(normal.Z) || lengthSquared < 1e-20)
+                { invalidNormals.Add(i); v.Normal = new Float3(); }
                 var uvLayers = new float[uvCount][];
                 for (int uv = 0; uv < uvCount; uv++) { uvLayers[uv] = Floats(2); if (tangents) Skip(16); }
                 if (uvCount > 0) { v.U = uvLayers[mainUv][0]; v.V = uvLayers[mainUv][1]; }
@@ -200,6 +207,7 @@ namespace Pmx2Fbx.Core
                 vertices.Add(v);
             }
             int triangleCount = Count("三角面", 5000000, 12);
+            int firstFace = faces.Count;
             if ((long)faces.Count + triangleCount * 3L > 15000000) throw new InvalidDataException("XPS 合并后的面数过大。");
             for (int t = 0; t < triangleCount; t++)
             {
@@ -211,8 +219,46 @@ namespace Pmx2Fbx.Core
                     faces.Add(offset + vertex);
                 }
             }
+            RepairNormals(offset, count, firstFace, invalidNormals);
             materials.Add(new PmxMaterial { Name = name, EnglishName = "", Diffuse = new[] { 1f, 1f, 1f, 1f }, Flags = 1,
                 Texture = mainTexture, SphereTexture = -1, IndexCount = triangleCount * 3 });
+        }
+        private void RepairNormals(int offset, int count, int firstFace, List<int> invalid)
+        {
+            if (invalid.Count == 0) return;
+            var x = new double[count]; var y = new double[count]; var z = new double[count];
+            var needed = new bool[count]; foreach (int index in invalid) needed[index] = true;
+            for (int f = firstFace; f < faces.Count; f += 3)
+            {
+                int a = faces[f] - offset, b = faces[f + 1] - offset, c = faces[f + 2] - offset;
+                var p = vertices[offset + a].Position; var q = vertices[offset + b].Position; var r = vertices[offset + c].Position;
+                double ux = (double)q.X - p.X, uy = (double)q.Y - p.Y, uz = (double)q.Z - p.Z;
+                double vx = (double)r.X - p.X, vy = (double)r.Y - p.Y, vz = (double)r.Z - p.Z;
+                double nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+                // Orient reconstructed normals to valid neighboring normals when available.
+                // Keep all authored normals intact, including hard edges on duplicated vertices.
+                double alignment = 0;
+                for (int corner = 0; corner < 3; corner++)
+                {
+                    int index = corner == 0 ? a : corner == 1 ? b : c;
+                    if (!needed[index]) { var n = vertices[offset + index].Normal; alignment += nx * n.X + ny * n.Y + nz * n.Z; }
+                }
+                if (alignment < 0) { nx = -nx; ny = -ny; nz = -nz; }
+                for (int corner = 0; corner < 3; corner++)
+                {
+                    int index = corner == 0 ? a : corner == 1 ? b : c;
+                    if (needed[index]) { x[index] += nx; y[index] += ny; z[index] += nz; }
+                }
+            }
+            int fallback = 0;
+            foreach (int index in invalid)
+            {
+                double length = Math.Sqrt(x[index] * x[index] + y[index] * y[index] + z[index] * z[index]);
+                if (length > 1e-20) vertices[offset + index].Normal = new Float3((float)(x[index] / length), (float)(y[index] / length), (float)(z[index] / length));
+                else { vertices[offset + index].Normal = new Float3(0, 1, 0); fallback++; }
+            }
+            model.Warnings.Add("XPS 网格有 " + invalid.Count + " 个无效或零长度法线，已按相邻三角面重建并保留其余原法线。" +
+                (fallback > 0 ? "其中 " + fallback + " 个顶点没有可用的相邻面，使用向上法线；请检查退化面。" : ""));
         }
         private byte[] ReadColor()
         {
@@ -226,7 +272,7 @@ namespace Pmx2Fbx.Core
             int[] bones; float[] weights;
             if (ascii != null)
             {
-                bones = Values().Select(Integer).ToArray(); weights = Values().Select(Number).ToArray();
+                bones = Values().Select(Integer).ToArray(); weights = Values().Select(v => Number(v)).ToArray();
                 if (bones.Length != weights.Length || bones.Length > 1024) throw new InvalidDataException("XPS 骨骼索引与权重数量不一致或过多。");
             }
             else
