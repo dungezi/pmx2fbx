@@ -75,6 +75,13 @@ public static class CoreTests
         string degenerate = plain.Replace("1 0 0\n", "0 0 0\n").Replace("0 1 0\n", "0 0 0\n").Replace("0 0 1\n", "0 0 0\n");
         var fallbackModel = XpsReader.Read(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(degenerate)), true);
         Expect(fallbackModel.Vertices.All(v => v.Normal.Y == 1) && fallbackModel.Warnings.Exists(w => w.Contains("相邻面")), "Degenerate faces use finite fallback normals");
+        foreach (bool ascii in new[] { false, true })
+        {
+            var renderGroups = XpsReader.Read(new MemoryStream(XpsFixture.Create(ascii:ascii, firstRenderGroup:5, secondRenderGroup:7)), ascii);
+            Expect(renderGroups.Materials[0].AlphaMode == MaterialAlphaMode.Opaque && renderGroups.Materials[1].AlphaMode == MaterialAlphaMode.Blend, "Preserve opaque/alpha XPS render groups: " + ascii);
+            var unknownGroups = XpsReader.Read(new MemoryStream(XpsFixture.Create(ascii:ascii, firstRenderGroup:99)), ascii);
+            Expect(unknownGroups.Materials.All(m => m.AlphaMode == MaterialAlphaMode.Auto), "Unknown and unlabelled render groups use automatic alpha: " + ascii);
+        }
         Console.WriteLine("PASS: " + passed + " PMX + XPS core assertions");
         return 0;
     }

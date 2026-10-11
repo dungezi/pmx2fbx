@@ -24,7 +24,7 @@ Shader "PMX2FBX/PC Toon"
         void surf(Input IN, inout SurfaceOutput o)
         {
             fixed4 c = tex2D(_MainTex, IN.uv_MainTex) * _Color * IN.color;
-            o.Albedo = c.rgb; o.Alpha = c.a;
+            o.Albedo = c.rgb; o.Alpha = 1;
         }
         ENDCG
     }

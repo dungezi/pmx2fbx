@@ -221,7 +221,25 @@ namespace Pmx2Fbx.Core
             }
             RepairNormals(offset, count, firstFace, invalidNormals);
             materials.Add(new PmxMaterial { Name = name, EnglishName = "", Diffuse = new[] { 1f, 1f, 1f, 1f }, Flags = 1,
-                Texture = mainTexture, SphereTexture = -1, IndexCount = triangleCount * 3 });
+                Texture = mainTexture, SphereTexture = -1, IndexCount = triangleCount * 3, AlphaMode = ReadAlphaMode(name) });
+        }
+        private static MaterialAlphaMode ReadAlphaMode(string name)
+        {
+            int separator = name.IndexOf('_');
+            if (separator <= 0 || !int.TryParse(name.Substring(0, separator), NumberStyles.None, CultureInfo.InvariantCulture, out int group))
+                return MaterialAlphaMode.Auto;
+            // XNALara render-group metadata controls use of diffuse alpha. Other group
+            // effects remain outside this converter; unknown groups use pixel analysis.
+            switch (group)
+            {
+                case 1: case 2: case 3: case 4: case 5: case 10: case 11: case 13: case 14: case 16: case 17:
+                case 22: case 24: case 26: case 28: case 30: case 32: case 36: case 38: case 40: case 42:
+                    return MaterialAlphaMode.Opaque;
+                case 6: case 7: case 8: case 9: case 12: case 15: case 18: case 19: case 20: case 21:
+                case 23: case 25: case 27: case 29: case 31: case 33: case 37: case 39: case 41: case 43:
+                    return MaterialAlphaMode.Blend;
+                default: return MaterialAlphaMode.Auto;
+            }
         }
         private void RepairNormals(int offset, int count, int firstFace, List<int> invalid)
         {

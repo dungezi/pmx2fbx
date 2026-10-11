@@ -11,7 +11,8 @@ namespace Pmx2Fbx.Tests
     {
         public static byte[] Create(int version = 3, bool ascii = false, bool humanoid = false, bool noBones = false,
             bool badParent = false, bool badFace = false, bool badWeight = false, bool manyWeights = false,
-            int badNormalKind = 0, bool badPosition = false, bool numberedRig = false)
+            int badNormalKind = 0, bool badPosition = false, bool numberedRig = false,
+            int firstRenderGroup = 0, int secondRenderGroup = 0, bool firstVertexAlpha = false)
         {
             var model = PmxReader.Read(new MemoryStream(PmxFixture.Create(humanoid: humanoid)));
             string[] names = { "root hips", "spine lower", "spine upper", "head neck lower", "head neck upper",
@@ -57,7 +58,8 @@ namespace Pmx2Fbx.Tests
                 integer(2);
                 for (int mesh = 0; mesh < 2; mesh++)
                 {
-                    str(mesh == 0 ? "测试 " + new string('m', 140) : "mesh2"); integer(2); integer(2);
+                    int group = mesh == 0 ? firstRenderGroup : secondRenderGroup;
+                    str(group > 0 ? group + "_fixture" + mesh + "_1_0_0" : mesh == 0 ? "测试 " + new string('m', 140) : "mesh2"); integer(2); integer(2);
                     str("missing.png"); integer(1); str("missing.png"); integer(0);
                     int count = model.Vertices.Length / 2; integer(count);
                     for (int i = 0; i < count; i++)
@@ -67,7 +69,8 @@ namespace Pmx2Fbx.Tests
                         if (badNormalKind != 0 && mesh == 0 && i == 0)
                             floats(new[] { badNormalKind == 1 ? float.NaN : badNormalKind == 2 ? float.PositiveInfinity : 0f, 0f, 0f });
                         else vector(v.Normal);
-                        if (ascii) text.WriteLine("120 200 255 255"); else binary.Write(new byte[] { 120, 200, 255, 255 });
+                        byte alpha = firstVertexAlpha && mesh == 0 && i == 0 ? (byte)80 : (byte)255;
+                        if (ascii) text.WriteLine("120 200 255 " + alpha); else binary.Write(new byte[] { 120, 200, 255, alpha });
                         floats(new[] { .2f, .3f }); if (!ascii && version <= 1) floats(new[] { 1f, 0f, 0f, 1f });
                         floats(new[] { .6f, .7f }); if (!ascii && version <= 1) floats(new[] { 1f, 0f, 0f, 1f });
                         if (!noBones)

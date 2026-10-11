@@ -184,6 +184,7 @@ namespace Pmx2Fbx
         {
             Directory.CreateDirectory(folder + "/Textures");
             var loaded = new Dictionary<int, Texture2D>();
+            var textureAlpha = new Dictionary<int, bool>();
             for (int i = 0; i < source.Textures.Length; i++)
             {
                 string name = source.Textures[i];
@@ -201,18 +202,28 @@ namespace Pmx2Fbx
                 string destination = folder + "/Textures/Texture_" + i.ToString("D5") + extension;
                 File.Copy(path, destination, false); AssetDatabase.ImportAsset(destination, ImportAssetOptions.ForceSynchronousImport);
                 var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(destination);
-                if (texture) loaded[i] = texture; else report.Warnings.Add("纹理导入失败：" + name);
+                if (texture)
+                {
+                    if (source.Materials.Any(m => m.Texture == i && m.AlphaMode == MaterialAlphaMode.Auto))
+                        textureAlpha[i] = UsesTextureAlpha(destination);
+                    loaded[i] = AssetDatabase.LoadAssetAtPath<Texture2D>(destination);
+                }
+                else report.Warnings.Add("纹理导入失败：" + name);
             }
             var materials = new Material[source.Materials.Length];
-            bool vertexAlpha = source.Vertices.Any(v => v.Color != null && v.Color[3] < 255);
+            int faceCursor = 0;
             for (int i = 0; i < materials.Length; i++)
             {
-                var pmx = source.Materials[i]; bool transparent = pmx.Diffuse[3] < .999f || vertexAlpha;
-                if (loaded.TryGetValue(pmx.Texture, out var texture))
+                var pmx = source.Materials[i]; bool vertexAlpha = false;
+                for (int index = faceCursor; index < faceCursor + pmx.IndexCount; index++)
                 {
-                    var importer = AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(texture)) as TextureImporter;
-                    transparent |= importer && importer.DoesSourceTextureHaveAlpha();
+                    var vertex = source.Vertices[source.Indices[index]];
+                    if (vertex.Color != null && vertex.Color[3] < 255) { vertexAlpha = true; break; }
                 }
+                faceCursor += pmx.IndexCount;
+                bool transparent = pmx.AlphaMode == MaterialAlphaMode.Blend || pmx.AlphaMode == MaterialAlphaMode.Auto
+                    && (pmx.Diffuse[3] < .999f || vertexAlpha || textureAlpha.TryGetValue(pmx.Texture, out bool alpha) && alpha);
+                loaded.TryGetValue(pmx.Texture, out var texture);
                 var shader = Shader.Find(transparent ? "PMX2FBX/PC Toon Transparent" : "PMX2FBX/PC Toon");
                 if (!shader) shader = Shader.Find("Standard");
                 if (!shader) throw new InvalidOperationException("缺少材质 Shader；请使用 Built-in Render Pipeline。");
@@ -226,9 +237,30 @@ namespace Pmx2Fbx
                     material.SetInt("_ZWrite", 0); material.EnableKeyword("_ALPHABLEND_ON"); material.renderQueue = 3000;
                 }
                 if (pmx.SphereTexture >= 0) report.Warnings.Add("材质「" + pmx.Name + "」的球面贴图未转换；主纹理与颜色已保留。");
+                report.Infos.Add(material.name + "：" + (transparent ? "半透明" : "不透明") +
+                    (pmx.AlphaMode == MaterialAlphaMode.Auto ? "（按颜色、当前材质顶点和贴图像素判断）" : "（保留 XPS 渲染组的透明设定）"));
             }
             report.Warnings.Add(source.Format == "XPS" ? "XPS 材质使用基础 PC Toon，特殊渲染组、法线与高光需要手动配置。透明排序请在 Unity 中检查。" : "材质使用基础 PC Toon；MMD Toon / Sphere / 描边效果需要按需要手动调整。透明排序请在 Unity 中检查。");
             return materials;
+        }
+        private static bool UsesTextureAlpha(string path)
+        {
+            var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+            if (!importer || !importer.DoesSourceTextureHaveAlpha()) return false;
+            bool readable = importer.isReadable; var compression = importer.textureCompression;
+            try
+            {
+                // Analyze alpha values before lossy compression, then restore normal import
+                // settings. An RGBA file with alpha=255 everywhere is still opaque.
+                importer.isReadable = true; importer.textureCompression = TextureImporterCompression.Uncompressed;
+                importer.SaveAndReimport();
+                var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                return texture.GetPixels32().Any(c => c.a < 255);
+            }
+            finally
+            {
+                importer.isReadable = readable; importer.textureCompression = compression; importer.SaveAndReimport();
+            }
         }
     }
 }

@@ -5,7 +5,8 @@ implemented. No saba, Unity MMD Tools or XNALaraMesh implementation files are ve
 Their repositories were consulted as references to PMX binary layout,
 coordinate conventions and Unity humanoid APIs; see README for links.
 XNALaraMesh (https://github.com/johnzero7/XNALaraMesh) was consulted for the
-XPS binary/ASCII layout only; its Blender scripts are not redistributed.
+XPS binary/ASCII layout and render-group alpha flags; its Blender scripts
+are not redistributed.
 
 Unity FBX Exporter (`com.unity.formats.fbx`, 4.2.1) is resolved separately by
 Unity Package Manager. It is distributed under the Unity Companion License.

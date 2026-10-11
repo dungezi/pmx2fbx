@@ -96,6 +96,7 @@ public static class UnityValidation
             Check(repairedMesh.normals.All(n => Finite(n.x) && Finite(n.y) && Finite(n.z) && n.sqrMagnitude > .9f), "Repaired FBX normals remain finite and normalized");
             CheckTriangleValidation();
             CheckXpsRigInference();
+            CheckMaterialTransparency();
             var args = Environment.GetCommandLineArgs(); int externalFlag = Array.IndexOf(args, "-pmx2fbxRealXps");
             if (externalFlag >= 0)
             {
@@ -119,6 +120,41 @@ public static class UnityValidation
     }
     private static void Check(bool condition, string label) { if (!condition) throw new Exception(label); }
     private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
+    private static void CheckMaterialTransparency()
+    {
+        string path = "Assets/Fixtures/alpha-materials.xps";
+        var texture = new Texture2D(2,2,TextureFormat.RGBA32,false);
+        try
+        {
+            texture.SetPixels(Enumerable.Repeat(new Color(1,0,0,1),4).ToArray()); texture.Apply();
+            File.WriteAllBytes("Assets/Fixtures/missing.png", texture.EncodeToPNG()); AssetDatabase.Refresh();
+            File.WriteAllBytes(path, XpsFixture.Create(firstRenderGroup:5, secondRenderGroup:7, firstVertexAlpha:true));
+            var result = XpsConverter.Convert(path, "Assets/Converted");
+            Check(result.ConversionSucceeded, "Explicit XPS alpha modes: " + string.Join("; ",result.Errors));
+            var materials = AssetDatabase.LoadAssetAtPath<GameObject>(result.Prefab).GetComponentInChildren<SkinnedMeshRenderer>().sharedMaterials;
+            Check(materials[0].shader.name == "PMX2FBX/PC Toon" && materials[1].shader.name == "PMX2FBX/PC Toon Transparent", "Authored render-group opacity overrides texture/vertex alpha");
+            texture.SetPixel(0,0,new Color(1,0,0,0)); texture.Apply();
+            File.WriteAllBytes("Assets/Fixtures/missing.png", texture.EncodeToPNG()); AssetDatabase.Refresh();
+            result = XpsConverter.Convert(path, "Assets/Converted");
+            Check(result.ConversionSucceeded, "XPS opacity with zero-alpha atlas pixels");
+            materials = AssetDatabase.LoadAssetAtPath<GameObject>(result.Prefab).GetComponentInChildren<SkinnedMeshRenderer>().sharedMaterials;
+            Check(materials[0].renderQueue < 3000 && materials[1].renderQueue >= 3000, "Zero-alpha atlas does not turn opaque XPS group transparent");
+            File.WriteAllBytes(path, XpsFixture.Create());
+            result = XpsConverter.Convert(path, "Assets/Converted");
+            Check(result.ConversionSucceeded, "Unknown XPS material alpha analysis");
+            materials = AssetDatabase.LoadAssetAtPath<GameObject>(result.Prefab).GetComponentInChildren<SkinnedMeshRenderer>().sharedMaterials;
+            Check(materials.All(m => m.shader.name == "PMX2FBX/PC Toon Transparent"), "Unknown materials retain actual image transparency");
+            texture.SetPixel(0,0,Color.red); texture.Apply();
+            File.WriteAllBytes("Assets/Fixtures/missing.png", texture.EncodeToPNG()); AssetDatabase.Refresh();
+            File.WriteAllBytes(path, XpsFixture.Create(firstVertexAlpha:true));
+            result = XpsConverter.Convert(path, "Assets/Converted");
+            Check(result.ConversionSucceeded, "Per-material vertex alpha analysis");
+            materials = AssetDatabase.LoadAssetAtPath<GameObject>(result.Prefab).GetComponentInChildren<SkinnedMeshRenderer>().sharedMaterials;
+            Check(materials[0].shader.name == "PMX2FBX/PC Toon Transparent" && materials[1].shader.name == "PMX2FBX/PC Toon", "Transparent vertices in one material do not affect another; all-255 RGBA stays opaque");
+            Check(materials.All(m => !(AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(m.mainTexture)) as TextureImporter).isReadable), "Texture readability restored after pixel analysis");
+        }
+        finally { UnityEngine.Object.DestroyImmediate(texture); }
+    }
     private static void CheckXpsRigInference()
     {
         var bytes = XpsFixture.Create(humanoid:true, numberedRig:true);
@@ -175,6 +211,9 @@ public static class UnityValidation
         Check(mesh.triangles.Length / 3 == result.Triangles && mesh.subMeshCount == source.Materials.Length && skin.bones.Length == source.Bones.Length, "Local XPS faces/material slots/bones verified");
         Check(mesh.normals.All(n => Finite(n.x) && Finite(n.y) && Finite(n.z) && n.sqrMagnitude > .9f), "Local XPS finite normals");
         Check(skin.sharedMaterials.All(m => m && m.mainTexture), "Local XPS texture references retained");
+        for (int i=0; i<source.Materials.Length; i++)
+            if (source.Materials[i].AlphaMode == MaterialAlphaMode.Opaque)
+                Check(skin.sharedMaterials[i].shader.name == "PMX2FBX/PC Toon" && skin.sharedMaterials[i].renderQueue < 3000, "Local XPS opaque render group preserved: " + i);
         var instance = (GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(result.Prefab));
         var baked = new Mesh(); instance.GetComponentInChildren<SkinnedMeshRenderer>().BakeMesh(baked);
         Check(baked.vertices.Zip(mesh.vertices,(a,b)=>Vector3.Distance(a,b)).Max() < .001f, "Local XPS bind pose after reimport");
@@ -198,6 +237,10 @@ public static class UnityValidation
             var mesh = renderer.sharedMesh;
             Check(animator && animator.avatar && animator.avatar.isValid && animator.avatar.isHuman, "Local VRChat imported Avatar valid");
             Check(renderer.sharedMaterials.All(m => m && m.mainTexture), "Local VRChat material texture references");
+            var source = XpsReader.Read(sourcePath);
+            for (int i=0; i<source.Materials.Length; i++)
+                if (source.Materials[i].AlphaMode == MaterialAlphaMode.Opaque)
+                    Check(renderer.sharedMaterials[i].shader.name == "PMX2FBX/PC Toon" && renderer.sharedMaterials[i].renderQueue < 3000, "Local VRChat opaque render group preserved: " + i);
             Check(mesh.normals.All(n => Finite(n.x) && Finite(n.y) && Finite(n.z) && n.sqrMagnitude > .9f), "Local VRChat finite normals after T Pose");
             Check(Math.Abs(mesh.bounds.size.y - 1.65f) < .03f, "Local VRChat meter scale");
             renderer.BakeMesh(baked); var rest = baked.vertices;
