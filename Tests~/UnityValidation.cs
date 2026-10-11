@@ -95,6 +95,7 @@ public static class UnityValidation
             var repairedMesh = AssetDatabase.LoadAssetAtPath<GameObject>(repairedNormals.Prefab).GetComponentInChildren<SkinnedMeshRenderer>().sharedMesh;
             Check(repairedMesh.normals.All(n => Finite(n.x) && Finite(n.y) && Finite(n.z) && n.sqrMagnitude > .9f), "Repaired FBX normals remain finite and normalized");
             CheckTriangleValidation();
+            CheckXpsRigInference();
             var args = Environment.GetCommandLineArgs(); int externalFlag = Array.IndexOf(args, "-pmx2fbxRealXps");
             if (externalFlag >= 0)
             {
@@ -118,6 +119,32 @@ public static class UnityValidation
     }
     private static void Check(bool condition, string label) { if (!condition) throw new Exception(label); }
     private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
+    private static void CheckXpsRigInference()
+    {
+        var bytes = XpsFixture.Create(humanoid:true, numberedRig:true);
+        var source = XpsReader.Read(new MemoryStream(bytes));
+        var map = HumanoidRig.AutoMap(source);
+        Check(HumanoidRig.Required.All(h => map.ContainsKey(h)), "Numbered XPS limbs and unnamed torso map all required slots");
+        Check(map[HumanBodyBones.Spine] == 1 && map[HumanBodyBones.Chest] == 2 && map[HumanBodyBones.Neck] == 3, "Infer torso from shared head/arms/hips chain");
+        source.Bones = source.Bones.Concat(new[] {new PmxBone { Name="unused accessory arm left shoulder 2", Parent=0 }}).ToArray();
+        Check(HumanoidRig.AutoMap(source)[HumanBodyBones.LeftUpperArm] == 6, "Accessory name suffix cannot override exact primary limb");
+        string path = "Assets/Fixtures/numbered-rig.xps"; File.WriteAllBytes(path, bytes);
+        var result = XpsConverter.Convert(path, "Assets/Converted", new ConversionOptions());
+        Check(result.ConversionSucceeded && result.HumanoidValid && result.Warnings.Any(w => w.Contains("共同父子层级")), "Numbered XPS Humanoid export/reimport");
+        source.Bones[9].Parent = -1;
+        Check(!HumanoidRig.AutoMap(source).ContainsKey(HumanBodyBones.Spine), "Disconnected arm prevents torso inference");
+        source = XpsReader.Read(new MemoryStream(bytes));
+        int helper = source.Bones.Length;
+        source.Bones = source.Bones.Concat(new[] {new PmxBone { Name="unnamed helper", Parent=0, Position=new Float3(0,.85f,0) }}).ToArray();
+        source.Bones[1].Parent = helper;
+        Check(!HumanoidRig.AutoMap(source).ContainsKey(HumanBodyBones.Spine), "Ambiguous spine chain remains unmapped");
+        source = XpsReader.Read(new MemoryStream(bytes));
+        source.Format = "PMX";
+        Check(!HumanoidRig.AutoMap(source).ContainsKey(HumanBodyBones.Spine), "XPS inference does not change PMX mapping");
+        var options = new ConversionOptions(); options.BoneOverrides.Add(new BoneOverride { Human=HumanBodyBones.Spine, PmxIndex=-1 });
+        var overridden = XpsConverter.Convert(path, "Assets/Converted", options);
+        Check(!overridden.ConversionSucceeded && overridden.Errors.Any(e => e.Contains("Spine")), "Manual unmapped override remains authoritative");
+    }
     private static void CheckTriangleValidation()
     {
         var root = new GameObject("TriangleValidation"); var original = new Mesh(); var imported = new Mesh();
@@ -156,5 +183,36 @@ public static class UnityValidation
         var map = HumanoidRig.AutoMap(source);
         var missing = HumanoidRig.Required.Where(h => !map.ContainsKey(h)).ToArray();
         Debug.Log("PMX2FBX_LOCAL_XPS_VALIDATION_PASS: " + result.Fbx + "; auto-mapping missing: " + string.Join(", ", missing));
+        if (Environment.GetCommandLineArgs().Contains("-pmx2fbxRealXpsVrChat")) VerifyExternalXpsVrChat(sourcePath);
+    }
+    private static void VerifyExternalXpsVrChat(string sourcePath)
+    {
+        var report = XpsConverter.Convert(sourcePath, "Assets/ExternalVrChat", new ConversionOptions());
+        File.WriteAllText("external-vrchat-validation-result.json", report.ToJson());
+        Check(report.ConversionSucceeded && report.HumanoidValid, "Local XPS VRChat conversion: " + string.Join("; ",report.Errors));
+        var instance = (GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(report.Prefab));
+        var baked = new Mesh();
+        try
+        {
+            var animator = instance.GetComponent<Animator>(); var renderer = instance.GetComponentInChildren<SkinnedMeshRenderer>();
+            var mesh = renderer.sharedMesh;
+            Check(animator && animator.avatar && animator.avatar.isValid && animator.avatar.isHuman, "Local VRChat imported Avatar valid");
+            Check(renderer.sharedMaterials.All(m => m && m.mainTexture), "Local VRChat material texture references");
+            Check(mesh.normals.All(n => Finite(n.x) && Finite(n.y) && Finite(n.z) && n.sqrMagnitude > .9f), "Local VRChat finite normals after T Pose");
+            Check(Math.Abs(mesh.bounds.size.y - 1.65f) < .03f, "Local VRChat meter scale");
+            renderer.BakeMesh(baked); var rest = baked.vertices;
+            Check(rest.Zip(mesh.vertices,(a,b)=>Vector3.Distance(a,b)).Max() < .001f, "Local VRChat T Pose bind matrices match");
+            foreach (var slot in new[] {HumanBodyBones.LeftUpperArm, HumanBodyBones.RightUpperArm, HumanBodyBones.LeftUpperLeg, HumanBodyBones.RightUpperLeg})
+            {
+                var joint = animator.GetBoneTransform(slot); var rotation = joint.localRotation;
+                joint.localRotation *= Quaternion.Euler(0,0,20); renderer.BakeMesh(baked);
+                Check(baked.vertices.Zip(rest,(a,b)=>Vector3.Distance(a,b)).Max() > .001f, "Local VRChat animated skin: " + slot);
+                joint.localRotation = rotation;
+            }
+            Check((animator.GetBoneTransform(HumanBodyBones.LeftLowerArm).position - animator.GetBoneTransform(HumanBodyBones.LeftUpperArm).position).normalized.x < -.99f
+                && (animator.GetBoneTransform(HumanBodyBones.RightLowerArm).position - animator.GetBoneTransform(HumanBodyBones.RightUpperArm).position).normalized.x > .99f, "Local VRChat bilateral T Pose");
+        }
+        finally { UnityEngine.Object.DestroyImmediate(baked); UnityEngine.Object.DestroyImmediate(instance); }
+        Debug.Log("PMX2FBX_LOCAL_VRCHAT_VALIDATION_PASS: " + report.Prefab);
     }
 }

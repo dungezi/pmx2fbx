@@ -59,7 +59,7 @@ namespace Pmx2Fbx
                 if (options.VrChat)
                 {
                     if (source.Bones.Length == 0) throw new InvalidDataException("VRChat 人形转换需要骨骼。");
-                    built.Human = HumanoidRig.Map(source, bones, options);
+                    built.Human = HumanoidRig.Map(source, bones, options, report);
                     HumanoidRig.Repair(built.Root, built.Human, report);
                 }
                 var mesh = built.Mesh = new Mesh { name = "Body", indexFormat = source.Vertices.Length > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16 };

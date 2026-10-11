@@ -27,19 +27,19 @@ namespace Pmx2Fbx
                 { HumanBodyBones.UpperChest, new[] { "上半身3", "上半身３", "upperchest", "spine2" } },
                 { HumanBodyBones.Neck, new[] { "首", "neck", "head neck lower" } },
                 { HumanBodyBones.Head, new[] { "頭", "head", "head neck upper" } },
-                { HumanBodyBones.Jaw, new[] { "顎", "jaw" } }
+                { HumanBodyBones.Jaw, new[] { "顎", "jaw", "head jaw" } }
             };
             foreach (bool left in new[] { true, false })
             {
                 string jp = left ? "左" : "右", en = left ? "Left" : "Right", shortSide = left ? "l" : "r";
-                Add(a, en + "Shoulder", jp + "肩", en + "Shoulder", "shoulder" + shortSide, "arm " + en + " clavicle");
-                Add(a, en + "UpperArm", jp + "腕", en + "UpperArm", en + "Arm", "arm" + shortSide, "arm " + en + " shoulder");
-                Add(a, en + "LowerArm", jp + "ひじ", jp + "肘", en + "LowerArm", en + "Elbow", "elbow" + shortSide, "arm " + en + " elbow");
+                Add(a, en + "Shoulder", jp + "肩", en + "Shoulder", "shoulder" + shortSide, "arm " + en + " clavicle", "arm " + en + " shoulder 1");
+                Add(a, en + "UpperArm", jp + "腕", en + "UpperArm", en + "Arm", "arm" + shortSide, "arm " + en + " shoulder", "arm " + en + " shoulder 2");
+                Add(a, en + "LowerArm", jp + "ひじ", jp + "肘", en + "LowerArm", en + "Elbow", "elbow" + shortSide, "arm " + en + " elbow", "arm " + en + " elbow 1");
                 Add(a, en + "Hand", jp + "手首", en + "Hand", en + "Wrist", "wrist" + shortSide, "arm " + en + " wrist");
-                Add(a, en + "UpperLeg", jp + "足", jp + "足D", en + "UpperLeg", en + "Leg", en + "Thigh", "leg" + shortSide, "leg " + en + " thigh");
+                Add(a, en + "UpperLeg", jp + "足", jp + "足D", en + "UpperLeg", en + "Leg", en + "Thigh", "leg" + shortSide, "leg " + en + " thigh", "leg " + en + " thigh 1");
                 Add(a, en + "LowerLeg", jp + "ひざ", jp + "膝", jp + "ひざD", en + "LowerLeg", en + "Knee", "knee" + shortSide, "leg " + en + " knee");
                 Add(a, en + "Foot", jp + "足首", jp + "足首D", en + "Foot", en + "Ankle", "ankle" + shortSide, "leg " + en + " ankle");
-                Add(a, en + "Toes", jp + "つま先", jp + "足先EX", en + "Toes", en + "Toe", "toe" + shortSide);
+                Add(a, en + "Toes", jp + "つま先", jp + "足先EX", en + "Toes", en + "Toe", "toe" + shortSide, "leg " + en + " toes");
                 Add(a, en + "Eye", jp + "目", en + "Eye", "eye" + shortSide);
                 string[] fingers = { "Thumb", "Index", "Middle", "Ring", "Little" };
                 string[] japanese = { "親指", "人指", "中指", "薬指", "小指" };
@@ -59,6 +59,8 @@ namespace Pmx2Fbx
         private static string Normalize(string name) => new string((name ?? "").ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
 
         public static Dictionary<HumanBodyBones, int> AutoMap(PmxModel model)
+            => AutoMap(model, out _);
+        private static Dictionary<HumanBodyBones, int> AutoMap(PmxModel model, out List<HumanBodyBones> inferred)
         {
             var result = new Dictionary<HumanBodyBones, int>();
             var used = new HashSet<int>();
@@ -74,11 +76,52 @@ namespace Pmx2Fbx
                 }
                 if (found >= 0) { result[pair.Key] = found; used.Add(found); }
             }
+            inferred = new List<HumanBodyBones>();
+            if (model.Format == "XPS") InferXpsTorso(model, result, used, inferred);
             return result;
         }
-        public static Dictionary<HumanBodyBones, Transform> Map(PmxModel model, Transform[] bones, ConversionOptions options)
+        private static bool Ancestor(PmxModel model, int ancestor, int child)
         {
-            var indices = AutoMap(model);
+            for (int steps = 0; child >= 0 && child < model.Bones.Length && steps < model.Bones.Length; steps++)
+            { if (child == ancestor) return true; child = model.Bones[child].Parent; }
+            return false;
+        }
+        private static void InferXpsTorso(PmxModel model, Dictionary<HumanBodyBones, int> map, HashSet<int> used, List<HumanBodyBones> inferred)
+        {
+            // Infer only along the shared torso chain of named head and bilateral limbs.
+            // Exact names remain authoritative; accessory/duplicate rigs cannot win by suffix.
+            if (!map.TryGetValue(HumanBodyBones.Hips, out int hips) || !map.TryGetValue(HumanBodyBones.Head, out int head)
+                || !map.TryGetValue(HumanBodyBones.LeftUpperArm, out int left) || !map.TryGetValue(HumanBodyBones.RightUpperArm, out int right)
+                || !map.TryGetValue(HumanBodyBones.LeftUpperLeg, out int leftLeg) || !map.TryGetValue(HumanBodyBones.RightUpperLeg, out int rightLeg)
+                || !Ancestor(model, hips, head) || !Ancestor(model, hips, leftLeg) || !Ancestor(model, hips, rightLeg)) return;
+            if (map.TryGetValue(HumanBodyBones.LeftShoulder, out int ls)) left = ls;
+            if (map.TryGetValue(HumanBodyBones.RightShoulder, out int rs)) right = rs;
+            int shared = -1;
+            for (int node = model.Bones[head].Parent, steps = 0; node >= 0 && steps < model.Bones.Length; node = model.Bones[node].Parent, steps++)
+                if (Ancestor(model, node, left) && Ancestor(model, node, right)) { shared = node; break; }
+            if (shared < 0 || shared == hips || !Ancestor(model, hips, shared)) return;
+            Action<HumanBodyBones, int> assign = (slot, index) => {
+                if (!map.ContainsKey(slot) && index >= 0 && !used.Contains(index))
+                { map[slot] = index; used.Add(index); inferred.Add(slot); }
+            };
+            assign(HumanBodyBones.Chest, shared);
+            if (!map.TryGetValue(HumanBodyBones.Chest, out int chest) || !Ancestor(model, hips, chest) || !Ancestor(model, chest, head)) return;
+            var chain = new List<int>();
+            for (int node = model.Bones[chest].Parent, steps = 0; node >= 0 && node != hips && steps < model.Bones.Length; node = model.Bones[node].Parent, steps++) chain.Add(node);
+            chain.Reverse();
+            // A unique unused, non-coincident joint avoids choosing arbitrary helper chains.
+            var spine = chain.Where(i => !used.Contains(i) && Separated(model.Bones[i].Position, model.Bones[hips].Position)
+                && Separated(model.Bones[i].Position, model.Bones[chest].Position)).ToArray();
+            if (spine.Length == 1) assign(HumanBodyBones.Spine, spine[0]);
+            int neck = model.Bones[head].Parent;
+            if (neck != chest && Ancestor(model, chest, neck) && Separated(model.Bones[neck].Position, model.Bones[head].Position))
+                assign(HumanBodyBones.Neck, neck);
+        }
+        private static bool Separated(Float3 a, Float3 b)
+            => (double)(a.X - b.X) * (a.X - b.X) + (double)(a.Y - b.Y) * (a.Y - b.Y) + (double)(a.Z - b.Z) * (a.Z - b.Z) > 1e-12;
+        public static Dictionary<HumanBodyBones, Transform> Map(PmxModel model, Transform[] bones, ConversionOptions options, ConversionReport report = null)
+        {
+            var indices = AutoMap(model, out var inferred);
             foreach (var custom in options.BoneOverrides)
             {
                 if (custom.PmxIndex == -1) { indices.Remove(custom.Human); continue; }
@@ -86,6 +129,9 @@ namespace Pmx2Fbx
                 indices[custom.Human] = custom.PmxIndex;
             }
             if (indices.Values.Distinct().Count() != indices.Count) throw new InvalidDataException("一个源骨骼不能映射到多个 Humanoid 插槽。");
+            inferred.RemoveAll(h => options.BoneOverrides.Any(o => o.Human == h));
+            if (inferred.Count > 0 && report != null)
+                report.Warnings.Add("XPS 部分躯干名称未识别，已按头部、双臂和髋部的共同父子层级补全映射：" + string.Join(", ", inferred) + "。请检查关节位置和动作。");
             var result = indices.ToDictionary(x => x.Key, x => bones[x.Value]);
             foreach (var pair in result) pair.Value.name = pair.Key.ToString();
             return result;

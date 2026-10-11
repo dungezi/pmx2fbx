@@ -11,13 +11,23 @@ namespace Pmx2Fbx.Tests
     {
         public static byte[] Create(int version = 3, bool ascii = false, bool humanoid = false, bool noBones = false,
             bool badParent = false, bool badFace = false, bool badWeight = false, bool manyWeights = false,
-            int badNormalKind = 0, bool badPosition = false)
+            int badNormalKind = 0, bool badPosition = false, bool numberedRig = false)
         {
             var model = PmxReader.Read(new MemoryStream(PmxFixture.Create(humanoid: humanoid)));
             string[] names = { "root hips", "spine lower", "spine upper", "head neck lower", "head neck upper",
                 "arm left clavicle", "arm left shoulder", "arm left elbow", "arm left wrist",
                 "arm right clavicle", "arm right shoulder", "arm right elbow", "arm right wrist",
                 "leg left thigh", "leg left knee", "leg left ankle", "leg right thigh", "leg right knee", "leg right ankle" };
+            if (numberedRig)
+            {
+                // The ordinary PMX fixture deliberately splits the hips/spine roots.
+                // This XPS case models a connected torso with unrecognized joint names.
+                model.Bones[1].Parent = 0;
+                names[1] = "unknown torso lower"; names[2] = "unknown torso upper"; names[3] = "unknown neck";
+                names[5] = "arm left shoulder 1"; names[6] = "arm left shoulder 2"; names[7] = "arm left elbow 1";
+                names[9] = "arm right shoulder 1"; names[10] = "arm right shoulder 2"; names[11] = "arm right elbow 1";
+                names[13] = "leg left thigh 1"; names[16] = "leg right thigh 1";
+            }
             using (var stream = new MemoryStream())
             using (var binary = new BinaryWriter(stream, Encoding.UTF8, true))
             using (var text = new StreamWriter(stream, new UTF8Encoding(false), 4096, true))
