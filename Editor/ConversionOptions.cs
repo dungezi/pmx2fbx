@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using Pmx2Fbx.Core;
 
 namespace Pmx2Fbx
 {
@@ -9,6 +10,12 @@ namespace Pmx2Fbx
     {
         public HumanBodyBones Human;
         public int PmxIndex = -1;
+    }
+    [Serializable]
+    public sealed class MaterialOverride
+    {
+        public int MaterialIndex;
+        public MaterialAlphaMode Mode;
     }
     [Serializable]
     public sealed class ConversionOptions
@@ -22,6 +29,10 @@ namespace Pmx2Fbx
         public bool IncludeMorphs = true;
         public bool AddDescriptor = true;
         public List<BoneOverride> BoneOverrides = new List<BoneOverride>();
+        public MaterialAlphaMode Transparency;
+        public float AlphaCutoff = .5f;
+        public float OpaqueAlphaThreshold = .98f;
+        public List<MaterialOverride> MaterialOverrides = new List<MaterialOverride>();
     }
     [Serializable]
     public sealed class ConversionReport

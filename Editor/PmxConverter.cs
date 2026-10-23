@@ -13,6 +13,9 @@ namespace Pmx2Fbx
         public static ConversionReport Convert(string pmxPath, string outputFolder, ConversionOptions options)
         {
             if (options == null) throw new ArgumentNullException(nameof(options));
+            if (float.IsNaN(options.AlphaCutoff) || options.AlphaCutoff <= 0 || options.AlphaCutoff >= 1
+                || float.IsNaN(options.OpaqueAlphaThreshold) || options.OpaqueAlphaThreshold < .9f || options.OpaqueAlphaThreshold > 1)
+                throw new ArgumentException("镂空阈值须在 0 到 1 之间，近不透明阈值须在 0.9 到 1 之间。");
             if (!FbxDependency.IsReady) throw new InvalidOperationException("请先在转换窗口安装 Unity FBX Exporter。");
             if (!File.Exists(pmxPath)) throw new FileNotFoundException("找不到模型文件。", pmxPath);
             if (GraphicsSettings.currentRenderPipeline != null) throw new InvalidOperationException("当前版本面向 VRChat PC / Built-in Render Pipeline，请在 Built-in 项目中转换。");

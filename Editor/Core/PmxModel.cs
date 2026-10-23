@@ -21,7 +21,7 @@ namespace Pmx2Fbx.Core
         public int[] Bones = { -1, -1, -1, -1 };
         public float[] Weights = new float[4];
     }
-    public enum MaterialAlphaMode { Auto, Opaque, Blend }
+    public enum MaterialAlphaMode { Auto, Opaque, Blend, Cutout }
     public sealed class PmxMaterial
     {
         public string Name, EnglishName;

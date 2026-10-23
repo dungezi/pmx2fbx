@@ -82,6 +82,7 @@ public static class CoreTests
             var unknownGroups = XpsReader.Read(new MemoryStream(XpsFixture.Create(ascii:ascii, firstRenderGroup:99)), ascii);
             Expect(unknownGroups.Materials.All(m => m.AlphaMode == MaterialAlphaMode.Auto), "Unknown and unlabelled render groups use automatic alpha: " + ascii);
         }
+        CheckAlphaCoverage();
         Console.WriteLine("PASS: " + passed + " PMX + XPS core assertions");
         return 0;
     }
@@ -89,5 +90,46 @@ public static class CoreTests
     {
         try { XpsReader.Read(new MemoryStream(data), ascii); throw new Exception("XPS accepted: " + label); }
         catch (InvalidDataException) { passed++; }
+    }
+    private static void CheckAlphaCoverage()
+    {
+        Func<float[], PmxModel> triangle = uv => new PmxModel {
+            Vertices=Enumerable.Range(0,uv.Length/2).Select(i=>new PmxVertex { U=uv[2*i], V=1-uv[2*i+1] }).ToArray(),
+            Indices=Enumerable.Range(0,uv.Length/2).ToArray()
+        };
+        var left = triangle(new[] {.1f,.1f,.4f,.1f,.1f,.7f});
+        var right = triangle(new[] {.82f,.1f,.97f,.1f,.82f,.7f});
+        var whole = triangle(new[] {.05f,.05f,.95f,.05f,.05f,.95f});
+        var pixels=Enumerable.Repeat((byte)255,256).ToArray();
+        for(int y=0;y<16;y++) for(int x=12;x<16;x++) pixels[y*16+x]=0;
+        var map=new AlphaCoverage(16,16,pixels);
+        Expect(map.Analyze(left,0,3).Mode==MaterialAlphaMode.Opaque, "Atlas alpha outside this material UV does not affect opacity");
+        Expect(map.Analyze(right,0,3).Mode==MaterialAlphaMode.Cutout, "Zero-alpha UV region remains invisible cutout");
+        Expect(map.Analyze(whole,0,3).Mode==MaterialAlphaMode.Cutout, "Binary alpha uses depth-writing cutout");
+        var shared=new PmxModel { Vertices=left.Vertices.Concat(right.Vertices).ToArray(), Indices=new[]{0,1,2,3,4,5} };
+        Expect(map.Analyze(shared,0,3).Mode==MaterialAlphaMode.Opaque && map.Analyze(shared,3,3).Mode==MaterialAlphaMode.Cutout, "Shared texture is analyzed separately for each material index range");
+        pixels=Enumerable.Repeat((byte)255,256).ToArray(); pixels[5*16+7]=0;
+        map=new AlphaCoverage(16,16,pixels);
+        Expect(map.Analyze(whole,0,3).Mode==MaterialAlphaMode.Cutout, "Alpha hole inside a polygon is detected without transparent vertices");
+        pixels=Enumerable.Repeat((byte)255,256).ToArray(); pixels[13*16+13]=0;
+        map=new AlphaCoverage(16,16,pixels);
+        Expect(map.Analyze(whole,0,3).Mode==MaterialAlphaMode.Opaque, "Alpha in bounding rectangle but outside UV triangle is excluded");
+        foreach(float shift in new[]{-2f,1f})
+        {
+            var repeated=triangle(new[]{.05f+shift,.05f+shift,.95f+shift,.05f+shift,.05f+shift,.95f+shift});
+            Expect(map.Analyze(repeated,0,3).Mode==MaterialAlphaMode.Opaque, "Repeat-wrapped UV triangle preserves coverage: "+shift);
+        }
+        Expect(new AlphaCoverage(16,16,Enumerable.Repeat((byte)127,256).ToArray()).Analyze(whole,0,3).Mode==MaterialAlphaMode.Blend, "Continuous partial alpha remains blended");
+        Expect(new AlphaCoverage(16,16,Enumerable.Repeat((byte)254,256).ToArray()).Analyze(whole,0,3).Mode==MaterialAlphaMode.Opaque, "Near-opaque texture alpha avoids blend sorting");
+        Expect(new AlphaCoverage(16,16,Enumerable.Repeat((byte)254,256).ToArray(),255).Analyze(whole,0,3).Mode==MaterialAlphaMode.Blend, "Strict opacity threshold can preserve slight texture transparency");
+        var antialiased=Enumerable.Range(0,256).Select(i=>(byte)(i%4==0 ? 0 : i%4==1 ? 127 : 255)).ToArray();
+        Expect(new AlphaCoverage(16,16,antialiased).Analyze(whole,0,3).Mode==MaterialAlphaMode.Cutout, "Thin antialiased mask edges remain depth-writing cutout");
+        var gradient=Enumerable.Range(0,256).Select(i=>(byte)(i%16*17)).ToArray();
+        Expect(new AlphaCoverage(16,16,gradient).Analyze(whole,0,3).Mode==MaterialAlphaMode.Blend, "Wide zero-to-solid alpha gradient remains translucent");
+        var point=triangle(new[]{.2f,.2f,.2f,.2f,.2f,.2f});
+        Expect(map.Analyze(point,0,3).Mode==MaterialAlphaMode.Opaque, "Collapsed UV triangle samples its actual point");
+        var huge=triangle(new[]{0f,0f,10000f,0f,0f,10000f});
+        Expect(map.Analyze(huge,0,3).UsedFallback, "Excessive UV repeat work is bounded and reported");
+        Expect(map.Analyze(whole,0,0).Mode==MaterialAlphaMode.Opaque, "Empty material index range is safe");
     }
 }

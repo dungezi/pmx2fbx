@@ -7,7 +7,7 @@ foreach ($name in @('Editor','Editor.meta','Shaders','Shaders.meta','README.md',
     $source = Join-Path $workspace $name
     if (Test-Path -LiteralPath $source) { Copy-Item -LiteralPath $source -Destination $plugin -Recurse -Force }
 }
-Copy-Item -LiteralPath "$workspace\Tests~\UnityPackageValidation.cs", "$workspace\Tests~\UnityValidation.cs", "$workspace\Tests~\PmxFixture.cs", "$workspace\Tests~\XpsFixture.cs" -Destination "$project\Assets\Editor" -Force
+Copy-Item -LiteralPath "$workspace\Tests~\UnityPackageValidation.cs", "$workspace\Tests~\UnityValidation.cs", "$workspace\Tests~\PmxFixture.cs", "$workspace\Tests~\XpsFixture.cs", "$workspace\Tests~\MaterialRenderValidation.cs" -Destination "$project\Assets\Editor" -Force
 $dependencies = [ordered]@{}
 foreach ($name in @('com.autodesk.fbx','com.unity.formats.fbx','com.unity.timeline','com.unity.test-framework','com.unity.ext.nunit')) {
     $path = Join-Path $workspace ".validation~\UnityProject\Packages\$name"

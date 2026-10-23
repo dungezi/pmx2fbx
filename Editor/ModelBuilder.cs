@@ -87,7 +87,7 @@ namespace Pmx2Fbx
                 var renderer = body.AddComponent<SkinnedMeshRenderer>(); renderer.sharedMesh = mesh; renderer.bones = bones;
                 renderer.rootBone = options.VrChat ? built.Human[HumanBodyBones.Hips] : armature;
                 renderer.quality = SkinQuality.Bone4;
-                built.Materials = CreateMaterials(source, pmxPath, folder, report);
+                built.Materials = CreateMaterials(source, pmxPath, folder, options, report);
                 renderer.sharedMaterials = built.Materials;
                 Matrix4x4[] skin = null;
                 if (options.VrChat && options.TPose)
@@ -180,11 +180,12 @@ namespace Pmx2Fbx
                 report.Infos.Add(name + " = " + source.Morphs[i].Name);
             }
         }
-        private static Material[] CreateMaterials(PmxModel source, string pmxPath, string folder, ConversionReport report)
+        private static Material[] CreateMaterials(PmxModel source, string pmxPath, string folder, ConversionOptions options, ConversionReport report)
         {
             Directory.CreateDirectory(folder + "/Textures");
             var loaded = new Dictionary<int, Texture2D>();
-            var textureAlpha = new Dictionary<int, bool>();
+            var textureAlpha = new Dictionary<int, AlphaCoverage>();
+            var alphaBySource = new Dictionary<string, AlphaCoverage>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < source.Textures.Length; i++)
             {
                 string name = source.Textures[i];
@@ -205,7 +206,11 @@ namespace Pmx2Fbx
                 if (texture)
                 {
                     if (source.Materials.Any(m => m.Texture == i && m.AlphaMode == MaterialAlphaMode.Auto))
-                        textureAlpha[i] = UsesTextureAlpha(destination);
+                    {
+                        if (!alphaBySource.TryGetValue(path, out var alpha))
+                        { alpha = ReadTextureAlpha(destination, options.OpaqueAlphaThreshold); alphaBySource[path] = alpha; }
+                        textureAlpha[i] = alpha;
+                    }
                     loaded[i] = AssetDatabase.LoadAssetAtPath<Texture2D>(destination);
                 }
                 else report.Warnings.Add("纹理导入失败：" + name);
@@ -218,35 +223,60 @@ namespace Pmx2Fbx
                 for (int index = faceCursor; index < faceCursor + pmx.IndexCount; index++)
                 {
                     var vertex = source.Vertices[source.Indices[index]];
-                    if (vertex.Color != null && vertex.Color[3] < 255) { vertexAlpha = true; break; }
+                    if (vertex.Color != null && vertex.Color[3] / 255f < options.OpaqueAlphaThreshold) { vertexAlpha = true; break; }
+                }
+                var custom = options.MaterialOverrides.FirstOrDefault(m => m.MaterialIndex == i);
+                var mode = custom != null && custom.Mode != MaterialAlphaMode.Auto ? custom.Mode : options.Transparency;
+                string reason = "手动设定";
+                if (mode == MaterialAlphaMode.Auto)
+                {
+                    mode = pmx.AlphaMode;
+                    reason = "XPS 渲染组设定";
+                    if (mode == MaterialAlphaMode.Auto)
+                    {
+                        reason = "当前材质的颜色、顶点及实际 UV 覆盖像素";
+                        if (pmx.Diffuse[3] < options.OpaqueAlphaThreshold || vertexAlpha) mode = MaterialAlphaMode.Blend;
+                        else if (textureAlpha.TryGetValue(pmx.Texture, out var alpha) && alpha != null)
+                        {
+                            var coverage = alpha.Analyze(source, faceCursor, pmx.IndexCount);
+                            mode = coverage.Mode;
+                            if (coverage.UsedFallback) report.Warnings.Add("材质 " + i + " 的 UV 重复跨度或分析量过大，已退回整张贴图判断；可在材质透明设置中手动指定。");
+                        }
+                        else mode = MaterialAlphaMode.Opaque;
+                    }
                 }
                 faceCursor += pmx.IndexCount;
-                bool transparent = pmx.AlphaMode == MaterialAlphaMode.Blend || pmx.AlphaMode == MaterialAlphaMode.Auto
-                    && (pmx.Diffuse[3] < .999f || vertexAlpha || textureAlpha.TryGetValue(pmx.Texture, out bool alpha) && alpha);
+                bool transparent = mode == MaterialAlphaMode.Blend, cutout = mode == MaterialAlphaMode.Cutout;
                 loaded.TryGetValue(pmx.Texture, out var texture);
-                var shader = Shader.Find(transparent ? "PMX2FBX/PC Toon Transparent" : "PMX2FBX/PC Toon");
+                var shader = Shader.Find(transparent ? "PMX2FBX/PC Toon Transparent" : cutout ? "PMX2FBX/PC Toon Cutout" : "PMX2FBX/PC Toon");
                 if (!shader) shader = Shader.Find("Standard");
                 if (!shader) throw new InvalidOperationException("缺少材质 Shader；请使用 Built-in Render Pipeline。");
                 var material = materials[i] = new Material(shader) { name = "Material_" + i.ToString("D5") };
                 material.color = new Color(pmx.Diffuse[0], pmx.Diffuse[1], pmx.Diffuse[2], pmx.Diffuse[3]);
                 material.mainTexture = texture;
+                if (material.HasProperty("_Cutoff")) material.SetFloat("_Cutoff", Mathf.Clamp01(options.AlphaCutoff));
                 if (material.HasProperty("_Cull")) material.SetInt("_Cull", (pmx.Flags & 1) != 0 ? 0 : 2);
                 if (transparent && shader.name == "Standard")
                 {
                     material.SetFloat("_Mode", 3); material.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha); material.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
                     material.SetInt("_ZWrite", 0); material.EnableKeyword("_ALPHABLEND_ON"); material.renderQueue = 3000;
                 }
+                if (cutout && shader.name == "Standard")
+                {
+                    material.SetFloat("_Mode", 1); material.EnableKeyword("_ALPHATEST_ON");
+                    material.SetInt("_SrcBlend", (int)BlendMode.One); material.SetInt("_DstBlend", (int)BlendMode.Zero);
+                    material.SetInt("_ZWrite", 1); material.SetOverrideTag("RenderType", "TransparentCutout"); material.renderQueue = 2450;
+                }
                 if (pmx.SphereTexture >= 0) report.Warnings.Add("材质「" + pmx.Name + "」的球面贴图未转换；主纹理与颜色已保留。");
-                report.Infos.Add(material.name + "：" + (transparent ? "半透明" : "不透明") +
-                    (pmx.AlphaMode == MaterialAlphaMode.Auto ? "（按颜色、当前材质顶点和贴图像素判断）" : "（保留 XPS 渲染组的透明设定）"));
+                report.Infos.Add(material.name + " = " + pmx.Name + "：" + (transparent ? "半透明" : cutout ? "镂空（写入深度）" : "不透明") + "（" + reason + "）");
             }
             report.Warnings.Add(source.Format == "XPS" ? "XPS 材质使用基础 PC Toon，特殊渲染组、法线与高光需要手动配置。透明排序请在 Unity 中检查。" : "材质使用基础 PC Toon；MMD Toon / Sphere / 描边效果需要按需要手动调整。透明排序请在 Unity 中检查。");
             return materials;
         }
-        private static bool UsesTextureAlpha(string path)
+        private static AlphaCoverage ReadTextureAlpha(string path, float opaqueThreshold)
         {
             var importer = AssetImporter.GetAtPath(path) as TextureImporter;
-            if (!importer || !importer.DoesSourceTextureHaveAlpha()) return false;
+            if (!importer || !importer.DoesSourceTextureHaveAlpha()) return null;
             bool readable = importer.isReadable; var compression = importer.textureCompression;
             try
             {
@@ -255,7 +285,7 @@ namespace Pmx2Fbx
                 importer.isReadable = true; importer.textureCompression = TextureImporterCompression.Uncompressed;
                 importer.SaveAndReimport();
                 var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
-                return texture.GetPixels32().Any(c => c.a < 255);
+                return new AlphaCoverage(texture.width, texture.height, texture.GetPixels32().Select(c => c.a).ToArray(), (byte)Mathf.CeilToInt(255 * opaqueThreshold));
             }
             finally
             {

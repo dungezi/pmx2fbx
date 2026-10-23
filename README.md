@@ -8,7 +8,7 @@ Unity 编辑器插件：选择 PMX，快速生成带骨骼、蒙皮、材质、�
 
 ### Unitypackage 版本
 
-1. 在 Unity 2022.3 项目中双击 `PMX2FBX-0.2.3.unitypackage`，或选择 **Assets → Import Package → Custom Package**。
+1. 在 Unity 2022.3 项目中双击 `PMX2FBX-0.2.4.unitypackage`，或选择 **Assets → Import Package → Custom Package**。
 2. 导入全部文件，插件位于 `Assets/PMX2FBX`。
 3. 打开 **Tools → PMX to FBX → 转换 PMX 模型**。若项目没有 FBX Exporter，点击窗口中的 **安装 FBX Exporter**，等待 Package Manager 下载和编译完成。
 4. 按下方流程转换模型。已有可用的 FBX Exporter 时会直接使用它。
@@ -18,7 +18,7 @@ Unity 编辑器插件：选择 PMX，快速生成带骨骼、蒙皮、材质、�
 ### Package Manager 版本
 
 1. 在 Unity 打开 **Window → Package Manager**。
-2. 点击 **+ → Add package from tarball**，选择发行文件 `com.pmx2fbx.converter-0.2.3.tgz`。Unity 会安装官方 FBX Exporter 4.2.1 及其依赖。
+2. 点击 **+ → Add package from tarball**，选择发行文件 `com.pmx2fbx.converter-0.2.4.tgz`。Unity 会安装官方 FBX Exporter 4.2.1 及其依赖。
 3. 若直接使用源码，选择 **Add package from disk**，打开本目录的 `package.json`。
 4. 为生成带 Avatar Descriptor 的头像，先通过 VRChat Creator Companion 创建 **Avatars** 项目并安装 Avatars SDK。SDK 是可选依赖：没有 SDK 仍可转换模型。
 
@@ -31,8 +31,9 @@ Unity 编辑器插件：选择 PMX，快速生成带骨骼、蒙皮、材质、�
 3. 指定输出目录，默认 `Assets/PMXConverted`。
 4. 普通模型取消 **VRChat PC 适配**；PC 头像保留勾选，按需要设置目标身高。
 5. 点击 **读取模型 / 查看骨骼映射**。常见日文 / 英文骨骼自动匹配，非标准命名可手动指定。
-6. 点击 **转换并导出**。
-7. 将生成的 `_VRChat.prefab` 拖到场景，确认视点、材质、关节与口型，然后在 **VRChat SDK → Builder** 执行检查和构建。
+6. 默认保留 **透明处理 → 自动（按材质实际 UV）**。需要调整个别部位时展开 **材质透明设置**，为该材质选择不透明、镂空或半透明。
+7. 点击 **转换并导出**。
+8. 将生成的 `_VRChat.prefab` 拖到场景，确认视点、材质、关节与口型，然后在 **VRChat SDK → Builder** 执行检查和构建。
 
 每次转换使用新的独立目录，不覆盖源模型或已有转换。输出包括：
 
@@ -45,6 +46,15 @@ Unity 编辑器插件：选择 PMX，快速生成带骨骼、蒙皮、材质、�
 | `conversion-report.json` | 成功状态、错误、未支持项、模型统计、原表情名称对应关系 |
 
 移动到其他 Unity 项目时，应保留整个输出文件夹和插件 Shader，不能只复制 FBX。Humanoid 映射保存在 FBX 的 Unity `.meta` 中；Avatar Descriptor 是 Unity / SDK 组件，保存在 Prefab 中。
+
+## PMX / XPS 通用透明处理（0.2.4）
+
+- 自动判断按每个材质的面索引和实际 UV 三角形覆盖范围扫描贴图，包含三角面内部、边缘及重复 UV；不使用整张图的 Alpha 来决定所有共用材质，也不按材质 / 模型名称匹配特例。
+- 不透明区域使用 Opaque。0 / 1 透明遮罩及窄的抗锯齿边缘使用 **Cutout（镂空）**，写入深度以保持头发、蕾丝和衣服之间的遮挡。宽范围连续透明度使用 **Blend（半透明）**。
+- 默认 **近不透明阈值为 0.98**，避免 Alpha=0.99 的皮肤等材质因为细微透明度被转成无深度写入的半透明。该阈值同时用于材质颜色、顶点和贴图 Alpha，可在材质设置中调到 1 保留微弱透明，或单独指定半透明。
+- 逐材质手动设置优先于全局设置，全局设置优先于自动判断；已知 XPS 渲染组的原透明设定仍在自动模式中优先保留。**镂空透明阈值**默认 0.5，可调整边缘裁剪。
+- 自动识别不能还原 MMD 专属材质特效或判断所有艺术意图。真正需要柔和透明的特殊材质可单独指定半透明；半透明网格的交叉面仍可能需要模型侧拆分或排序。UV 重复跨度 / 分析量超过限制时回退整图分析并明确警告，避免无限扫描。
+- 更新后需重新转换，旧输出和手动修改过的材质不会自动覆盖；转换报告逐项记录源材质名称、最终模式和判断依据。
 
 ## XPS 附属功能
 

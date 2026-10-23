@@ -97,6 +97,7 @@ public static class UnityValidation
             CheckTriangleValidation();
             CheckXpsRigInference();
             CheckMaterialTransparency();
+            CheckPmxMaterialCoverage();
             var args = Environment.GetCommandLineArgs(); int externalFlag = Array.IndexOf(args, "-pmx2fbxRealXps");
             if (externalFlag >= 0)
             {
@@ -104,7 +105,7 @@ public static class UnityValidation
                 VerifyExternalXps(args[externalFlag + 1]);
             }
             string shaderFolder = AssetDatabase.IsValidFolder("Assets/PMX2FBX/Shaders") ? "Assets/PMX2FBX/Shaders/" : "Packages/com.pmx2fbx.converter/Shaders/";
-            foreach (var path in new[] { shaderFolder + "PcToon.shader", shaderFolder + "PcToonTransparent.shader" })
+            foreach (var path in new[] { shaderFolder + "PcToon.shader", shaderFolder + "PcToonTransparent.shader", shaderFolder + "PcToonCutout.shader" })
             {
                 var shader = AssetDatabase.LoadAssetAtPath<Shader>(path);
                 Check(shader && !ShaderUtil.ShaderHasError(shader), "Shader compilation: " + path);
@@ -143,7 +144,7 @@ public static class UnityValidation
             result = XpsConverter.Convert(path, "Assets/Converted");
             Check(result.ConversionSucceeded, "Unknown XPS material alpha analysis");
             materials = AssetDatabase.LoadAssetAtPath<GameObject>(result.Prefab).GetComponentInChildren<SkinnedMeshRenderer>().sharedMaterials;
-            Check(materials.All(m => m.shader.name == "PMX2FBX/PC Toon Transparent"), "Unknown materials retain actual image transparency");
+            Check(materials.All(m => m.shader.name == "PMX2FBX/PC Toon"), "Unused transparent texels do not affect unknown material UV points");
             texture.SetPixel(0,0,Color.red); texture.Apply();
             File.WriteAllBytes("Assets/Fixtures/missing.png", texture.EncodeToPNG()); AssetDatabase.Refresh();
             File.WriteAllBytes(path, XpsFixture.Create(firstVertexAlpha:true));
@@ -152,6 +153,43 @@ public static class UnityValidation
             materials = AssetDatabase.LoadAssetAtPath<GameObject>(result.Prefab).GetComponentInChildren<SkinnedMeshRenderer>().sharedMaterials;
             Check(materials[0].shader.name == "PMX2FBX/PC Toon Transparent" && materials[1].shader.name == "PMX2FBX/PC Toon", "Transparent vertices in one material do not affect another; all-255 RGBA stays opaque");
             Check(materials.All(m => !(AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(m.mainTexture)) as TextureImporter).isReadable), "Texture readability restored after pixel analysis");
+        }
+        finally { UnityEngine.Object.DestroyImmediate(texture); }
+    }
+    private static void CheckPmxMaterialCoverage()
+    {
+        string path="Assets/Fixtures/atlas-materials.pmx";
+        var texture=new Texture2D(32,32,TextureFormat.RGBA32,false);
+        try
+        {
+            var pixels=Enumerable.Repeat(Color.red,1024).ToArray();
+            for(int y=0;y<32;y++) for(int x=25;x<32;x++) pixels[y*32+x]=new Color(1,0,0,0);
+            texture.SetPixels(pixels); texture.Apply();
+            File.WriteAllBytes("Assets/Fixtures/missing.png",texture.EncodeToPNG()); AssetDatabase.Refresh();
+            File.WriteAllBytes(path,PmxFixture.Create(atlasUvs:true,firstAlpha:.99f));
+            var report=PmxConverter.Convert(path,"Assets/Converted",new ConversionOptions { VrChat=false });
+            Check(report.ConversionSucceeded,"PMX atlas export: "+string.Join("; ",report.Errors));
+            var materials=AssetDatabase.LoadAssetAtPath<GameObject>(report.Prefab).GetComponentInChildren<SkinnedMeshRenderer>().sharedMaterials;
+            Check(materials[0].shader.name=="PMX2FBX/PC Toon" && materials[1].shader.name=="PMX2FBX/PC Toon Cutout", "PMX shared atlas: near-opaque skin stays opaque, mask stays cutout");
+            Check(materials[1].renderQueue==2450 && Math.Abs(materials[1].GetFloat("_Cutoff")-.5f)<.001f,"Cutout queue and threshold survive FBX/Prefab round trip");
+            var options=new ConversionOptions { VrChat=false, Transparency=MaterialAlphaMode.Blend };
+            options.MaterialOverrides.Add(new MaterialOverride { MaterialIndex=0,Mode=MaterialAlphaMode.Opaque });
+            report=PmxConverter.Convert(path,"Assets/Converted",options);
+            Check(report.ConversionSucceeded,"Manual material mode export");
+            materials=AssetDatabase.LoadAssetAtPath<GameObject>(report.Prefab).GetComponentInChildren<SkinnedMeshRenderer>().sharedMaterials;
+            Check(materials[0].shader.name=="PMX2FBX/PC Toon" && materials[1].shader.name=="PMX2FBX/PC Toon Transparent","Per-material override wins over global mode");
+            File.WriteAllBytes(path,PmxFixture.Create(atlasUvs:true,firstAlpha:.5f));
+            report=PmxConverter.Convert(path,"Assets/Converted",new ConversionOptions { VrChat=false });
+            Check(report.ConversionSucceeded,"PMX real partial opacity export");
+            materials=AssetDatabase.LoadAssetAtPath<GameObject>(report.Prefab).GetComponentInChildren<SkinnedMeshRenderer>().sharedMaterials;
+            Check(materials[0].shader.name=="PMX2FBX/PC Toon Transparent","Actual material translucency remains blended");
+            pixels=Enumerable.Repeat(new Color(1,0,0,.5f),1024).ToArray(); texture.SetPixels(pixels); texture.Apply();
+            File.WriteAllBytes("Assets/Fixtures/missing.png",texture.EncodeToPNG()); AssetDatabase.Refresh();
+            File.WriteAllBytes(path,PmxFixture.Create(atlasUvs:true));
+            report=PmxConverter.Convert(path,"Assets/Converted",new ConversionOptions { VrChat=false });
+            Check(report.ConversionSucceeded,"PMX continuous texture alpha export");
+            materials=AssetDatabase.LoadAssetAtPath<GameObject>(report.Prefab).GetComponentInChildren<SkinnedMeshRenderer>().sharedMaterials;
+            Check(materials.All(m=>m.shader.name=="PMX2FBX/PC Toon Transparent"),"Continuous image alpha is not converted to a cutout mask");
         }
         finally { UnityEngine.Object.DestroyImmediate(texture); }
     }

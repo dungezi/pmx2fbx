@@ -7,7 +7,8 @@ namespace Pmx2Fbx.Tests
     // Entirely synthetic geometry and rig; no third-party model is redistributed.
     public static class PmxFixture
     {
-        public static byte[] Create(bool utf16 = false, int width = 1, int skinning = 0, bool humanoid = false, bool missingChest = false, bool cycle = false)
+        public static byte[] Create(bool utf16 = false, int width = 1, int skinning = 0, bool humanoid = false, bool missingChest = false, bool cycle = false,
+            bool atlasUvs = false, float firstAlpha = 1, float secondAlpha = 1)
         {
             using (var stream = new MemoryStream())
             using (var w = new BinaryWriter(stream))
@@ -37,7 +38,13 @@ namespace Pmx2Fbx.Tests
                     if (i >= 6) { var armPosition = locations[bone]; vector(armPosition[0],armPosition[1],-.02f * (i % 3)); }
                     else vector(i % 3 == 0 ? -.1f : .1f, i < 3 ? 0 : 1.75f, -.02f * (i % 3));
                     vector(0,0,-1);
-                    w.Write(i % 2 == 0 ? 0f : 1f); w.Write(i < 3 ? 0f : 1f);
+                    if (atlasUvs)
+                    {
+                        float u = (i<3 ? .1f : .65f) + (i%3==1 ? .3f : 0);
+                        float v = i%3==2 ? .7f : .1f;
+                        w.Write(u); w.Write(1-v);
+                    }
+                    else { w.Write(i % 2 == 0 ? 0f : 1f); w.Write(i < 3 ? 0f : 1f); }
                     for (int j = 0; j < 4; j++) w.Write((float)j / 4);
                     w.Write((byte)skinning);
                     if (skinning == 0) index(humanoid ? bone : 0);
@@ -52,7 +59,7 @@ namespace Pmx2Fbx.Tests
                 for (int material = 0; material < 2; material++)
                 {
                     text("材質" + material); text("mat" + material);
-                    for (int j = 0; j < 4; j++) w.Write(1f);
+                    for (int j = 0; j < 3; j++) w.Write(1f); w.Write(material==0 ? firstAlpha : secondAlpha);
                     for (int j = 0; j < 7; j++) w.Write(0f);
                     w.Write((byte)1); for (int j = 0; j < 5; j++) w.Write(0f);
                     index(0); index(-1); w.Write((byte)0); w.Write((byte)1); w.Write((byte)0); text(""); w.Write(vertexCount / 2);

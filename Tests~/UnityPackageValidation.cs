@@ -43,6 +43,8 @@ public static class UnityPackageValidation
             if (!AssetDatabase.IsValidFolder("Assets/PMX2FBX/Editor")) throw new Exception("Imported Editor files missing.");
             var shader = AssetDatabase.LoadAssetAtPath<Shader>("Assets/PMX2FBX/Shaders/PcToon.shader");
             if (!shader || ShaderUtil.ShaderHasError(shader)) throw new Exception("Imported shader invalid.");
+            var cutout = AssetDatabase.LoadAssetAtPath<Shader>("Assets/PMX2FBX/Shaders/PcToonCutout.shader");
+            if (!cutout || ShaderUtil.ShaderHasError(cutout)) throw new Exception("Imported cutout shader invalid.");
             var windowType = Dependency.Assembly.GetType("Pmx2Fbx.ConverterWindow", true);
             var window = EditorWindow.GetWindow(windowType);
             window.Close();

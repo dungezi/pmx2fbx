@@ -16,6 +16,8 @@ namespace Pmx2Fbx
         private ConversionReport report;
         private Vector2 scroll;
         private bool mapping;
+        private bool materialSettings;
+        private static readonly string[] AlphaLabels = { "自动（按材质实际 UV）", "不透明", "半透明", "镂空（保留遮挡）" };
         [SerializeField] private int format;
         [MenuItem("Tools/PMX to FBX/转换 PMX 模型")]
         public static void Open() => GetWindow<ConverterWindow>("模型 → FBX").SetFormat(0);
@@ -44,11 +46,11 @@ namespace Pmx2Fbx
             EditorGUILayout.HelpBox(format == 0 ? "转换 PMX 2.0 / 2.1；保留骨骼蒙皮、主纹理与顶点 / 组表情。VRChat 模式面向 PC 人形头像。" : "支持 .xps、.mesh 和 .mesh.ascii；保留骨骼蒙皮、顶点颜色、UV 和主贴图。XPS 不提供 BlendShape；可选 VRChat PC 人形适配。", MessageType.Info);
             EditorGUILayout.BeginHorizontal();
             EditorGUI.BeginChangeCheck(); sourcePath = EditorGUILayout.TextField("模型文件", sourcePath);
-            if (EditorGUI.EndChangeCheck()) { model = null; options.BoneOverrides.Clear(); }
+            if (EditorGUI.EndChangeCheck()) { model = null; options.BoneOverrides.Clear(); options.MaterialOverrides.Clear(); }
             if (GUILayout.Button("浏览", GUILayout.Width(55)))
             {
                 string selected = EditorUtility.OpenFilePanelWithFilters("选择模型", "", format == 0 ? new[] { "PMX", "pmx" } : new[] { "XPS / XNALara", "xps,mesh,ascii" });
-                if (!string.IsNullOrEmpty(selected)) { sourcePath = selected; model = null; options.BoneOverrides.Clear(); }
+                if (!string.IsNullOrEmpty(selected)) { sourcePath = selected; model = null; options.BoneOverrides.Clear(); options.MaterialOverrides.Clear(); }
             }
             EditorGUILayout.EndHorizontal();
             var drag = Event.current;
@@ -56,7 +58,7 @@ namespace Pmx2Fbx
             {
                 DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
                 if (drag.type == EventType.DragPerform)
-                { DragAndDrop.AcceptDrag(); string selected = DragAndDrop.paths.First(ModelReader.IsSupported); SetFormat(ModelReader.IsXps(selected) ? 1 : 0); sourcePath = selected; model = null; options.BoneOverrides.Clear(); }
+                { DragAndDrop.AcceptDrag(); string selected = DragAndDrop.paths.First(ModelReader.IsSupported); SetFormat(ModelReader.IsXps(selected) ? 1 : 0); sourcePath = selected; model = null; options.BoneOverrides.Clear(); options.MaterialOverrides.Clear(); }
                 drag.Use();
             }
             outputPath = EditorGUILayout.TextField("输出目录", outputPath);
@@ -74,12 +76,16 @@ namespace Pmx2Fbx
             else options.Scale = EditorGUILayout.FloatField("模型单位 → 米", options.Scale);
             options.Rotate180 = EditorGUILayout.Toggle("额外旋转 180°（修正朝向）", options.Rotate180);
             if (format == 0) options.IncludeMorphs = EditorGUILayout.Toggle("导出 BlendShape 表情", options.IncludeMorphs);
+            options.Transparency = (MaterialAlphaMode)EditorGUILayout.Popup("透明处理", (int)options.Transparency, AlphaLabels);
+            options.AlphaCutoff = EditorGUILayout.Slider("镂空透明阈值", options.AlphaCutoff, .01f, .99f);
             using (new EditorGUI.DisabledScope(!File.Exists(sourcePath)))
             {
                 if (GUILayout.Button("读取模型 / 查看骨骼映射")) Read();
                 if (model != null)
                 {
                     EditorGUILayout.LabelField(model.Name + "  ·  " + model.Vertices.Length + " 顶点  ·  " + model.Indices.Length / 3 + " 三角面");
+                    materialSettings = EditorGUILayout.Foldout(materialSettings, "材质透明设置（可逐个调整）", true);
+                    if (materialSettings) DrawMaterials();
                     if (options.VrChat)
                     {
                         mapping = EditorGUILayout.Foldout(mapping, "骨骼映射（自动匹配，可手动修改）", true);
@@ -128,6 +134,26 @@ namespace Pmx2Fbx
                 }
             }
             if (GUILayout.Button("恢复自动映射")) options.BoneOverrides.Clear();
+        }
+        private void DrawMaterials()
+        {
+            EditorGUILayout.HelpBox("自动模式仅检查当前材质实际使用的贴图区域。黑白透明遮罩使用镂空并写入深度，连续透明度使用半透明。特殊材质可在下方单独指定；材质名称不参与自动判断。", MessageType.Info);
+            options.OpaqueAlphaThreshold = EditorGUILayout.Slider("近不透明阈值", options.OpaqueAlphaThreshold, .9f, 1);
+            EditorGUILayout.HelpBox("默认将 Alpha ≥ 0.98 视为不透明，避免 0.99 的皮肤等材质出现深度排序穿透。需要精确保留微弱透明度时，可将该材质指定为半透明或把阈值设为 1。", MessageType.None);
+            var labels = new[] { "跟随全局 / 自动", "不透明", "半透明", "镂空（保留遮挡）" };
+            for (int i=0; i<model.Materials.Length; i++)
+            {
+                var custom = options.MaterialOverrides.FirstOrDefault(m => m.MaterialIndex == i);
+                int current = custom == null ? 0 : (int)custom.Mode;
+                EditorGUI.BeginChangeCheck();
+                int selected = EditorGUILayout.Popup(i + ": " + model.Materials[i].Name, current, labels);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    if (custom == null) { custom = new MaterialOverride { MaterialIndex=i }; options.MaterialOverrides.Add(custom); }
+                    custom.Mode = (MaterialAlphaMode)selected;
+                }
+            }
+            if (GUILayout.Button("恢复材质自动判断")) { options.MaterialOverrides.Clear(); options.Transparency=MaterialAlphaMode.Auto; }
         }
     }
 }
