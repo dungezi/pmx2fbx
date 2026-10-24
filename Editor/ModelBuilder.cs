@@ -254,6 +254,10 @@ namespace Pmx2Fbx
                 var material = materials[i] = new Material(shader) { name = "Material_" + i.ToString("D5") };
                 material.color = new Color(pmx.Diffuse[0], pmx.Diffuse[1], pmx.Diffuse[2], pmx.Diffuse[3]);
                 material.mainTexture = texture;
+                bool occlusion = custom != null && custom.Occlusion != OcclusionOverride.Inherit
+                    ? custom.Occlusion == OcclusionOverride.Enabled : options.TransparentOcclusion;
+                if (material.HasProperty("_DepthPrepass")) material.SetFloat("_DepthPrepass", occlusion ? 1 : 0);
+                if (material.HasProperty("_DepthCutoff")) material.SetFloat("_DepthCutoff", options.OcclusionCutoff);
                 if (material.HasProperty("_Cutoff")) material.SetFloat("_Cutoff", Mathf.Clamp01(options.AlphaCutoff));
                 if (material.HasProperty("_Cull")) material.SetInt("_Cull", (pmx.Flags & 1) != 0 ? 0 : 2);
                 if (transparent && shader.name == "Standard")
@@ -269,6 +273,7 @@ namespace Pmx2Fbx
                 }
                 if (pmx.SphereTexture >= 0) report.Warnings.Add("材质「" + pmx.Name + "」的球面贴图未转换；主纹理与颜色已保留。");
                 report.Infos.Add(material.name + " = " + pmx.Name + "：" + (transparent ? "半透明" : cutout ? "镂空（写入深度）" : "不透明") + "（" + reason + "）");
+                if (transparent) report.Infos.Add(material.name + " 半透明遮挡保护：" + (occlusion ? "开启，Alpha ≥ " + options.OcclusionCutoff : "关闭"));
             }
             report.Warnings.Add(source.Format == "XPS" ? "XPS 材质使用基础 PC Toon，特殊渲染组、法线与高光需要手动配置。透明排序请在 Unity 中检查。" : "材质使用基础 PC Toon；MMD Toon / Sphere / 描边效果需要按需要手动调整。透明排序请在 Unity 中检查。");
             return materials;

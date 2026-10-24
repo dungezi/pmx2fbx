@@ -190,6 +190,14 @@ public static class UnityValidation
             Check(report.ConversionSucceeded,"PMX continuous texture alpha export");
             materials=AssetDatabase.LoadAssetAtPath<GameObject>(report.Prefab).GetComponentInChildren<SkinnedMeshRenderer>().sharedMaterials;
             Check(materials.All(m=>m.shader.name=="PMX2FBX/PC Toon Transparent"),"Continuous image alpha is not converted to a cutout mask");
+            Check(materials.All(m=>m.GetFloat("_DepthPrepass")==1 && Math.Abs(m.GetFloat("_DepthCutoff")-.5f)<.001f),"Blend occlusion properties survive FBX/Prefab round trip");
+            var disabled=new ConversionOptions { VrChat=false, TransparentOcclusion=false, OcclusionCutoff=.7f };
+            disabled.MaterialOverrides.Add(new MaterialOverride { MaterialIndex=0,Occlusion=OcclusionOverride.Enabled });
+            report=PmxConverter.Convert(path,"Assets/Converted",disabled);
+            Check(report.ConversionSucceeded,"Per-material occlusion export");
+            materials=AssetDatabase.LoadAssetAtPath<GameObject>(report.Prefab).GetComponentInChildren<SkinnedMeshRenderer>().sharedMaterials;
+            Check(materials[0].GetFloat("_DepthPrepass")==1 && materials[1].GetFloat("_DepthPrepass")==0
+                && Math.Abs(materials[0].GetFloat("_DepthCutoff")-.7f)<.001f,"Per-material occlusion overrides global setting");
         }
         finally { UnityEngine.Object.DestroyImmediate(texture); }
     }

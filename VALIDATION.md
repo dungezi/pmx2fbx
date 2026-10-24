@@ -1,6 +1,6 @@
 # 验证记录
 
-验证日期：2026-10-24（0.2.4）。环境：Windows，Unity **2022.3.22f1**，Built-in Render Pipeline，FBX Exporter **4.2.1**，Autodesk FBX SDK for Unity **4.2.1**，Timeline **1.7.6**。
+验证日期：2026-10-24（0.2.5）。环境：Windows，Unity **2022.3.22f1**，Built-in Render Pipeline，FBX Exporter **4.2.1**，Autodesk FBX SDK for Unity **4.2.1**，Timeline **1.7.6**。
 
 ## PMX 核心读取器
 
@@ -67,6 +67,13 @@
 - 自动近不透明阈值为 0.98，手动 Blend 或阈值设为 1 可保留微弱透明。艺术意图、真正半透明交叉面的排序和完整 MMD 特效不保证自动还原；提供全局与逐材质 Opaque / Cutout / Blend 控制。
 - 用户压缩包、模型、贴图、预览和转换结果均留在本地验证目录，不加入仓库或发行附件。
 - 使用图形设备运行独立 `MaterialRenderValidation.Run`：遮罩孔洞显示后方物体，实体区域写入深度并遮挡后绘制的半透明物体，裁剪阈值可调。另检查真实 PMX 使用旧版判定 / 新版判定的静态渲染对照。
+
+## 0.2.5 半透明子网格遮挡
+
+- 半透明 Shader 新增可关闭、可调整 Alpha 阈值的纯深度 Pass；保留原颜色混合，未按模型或材质名称做特例。加入 Unity 实例化 / 单通道立体宏，尚未进行 VR 头显实机验证。
+- 实际图形设备测试同一个 SkinnedMeshRenderer 内的两个半透明子网格：前层 Alpha=0.8，后绘制的黑色模拟阴影层。在关闭 / 开启保护时检测到预期像素差异；Alpha=0.2 的柔和边缘保持相同的混合结果，保护阈值改为 0.9 时不会遮挡 Alpha=0.8 区域。
+- 全局保护开关、逐材质覆盖、保护阈值在 FBX 材质重映射 / Prefab 回读后保留；原 PMX / XPS / Humanoid / 蒙皮 / BlendShape 回归通过。
+- 同一份本地 PMX 的正面和左右 35 度近景对照已检查：后层粉色模拟阴影不再覆盖刘海的实体区域，遮挡之外的眼罩、链条等几何保持可见。预览及模型未发布。
 
 ## Unitypackage 安装版本
 

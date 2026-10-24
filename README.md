@@ -8,7 +8,7 @@ Unity 编辑器插件：选择 PMX，快速生成带骨骼、蒙皮、材质、�
 
 ### Unitypackage 版本
 
-1. 在 Unity 2022.3 项目中双击 `PMX2FBX-0.2.4.unitypackage`，或选择 **Assets → Import Package → Custom Package**。
+1. 在 Unity 2022.3 项目中双击 `PMX2FBX-0.2.5.unitypackage`，或选择 **Assets → Import Package → Custom Package**。
 2. 导入全部文件，插件位于 `Assets/PMX2FBX`。
 3. 打开 **Tools → PMX to FBX → 转换 PMX 模型**。若项目没有 FBX Exporter，点击窗口中的 **安装 FBX Exporter**，等待 Package Manager 下载和编译完成。
 4. 按下方流程转换模型。已有可用的 FBX Exporter 时会直接使用它。
@@ -18,7 +18,7 @@ Unity 编辑器插件：选择 PMX，快速生成带骨骼、蒙皮、材质、�
 ### Package Manager 版本
 
 1. 在 Unity 打开 **Window → Package Manager**。
-2. 点击 **+ → Add package from tarball**，选择发行文件 `com.pmx2fbx.converter-0.2.4.tgz`。Unity 会安装官方 FBX Exporter 4.2.1 及其依赖。
+2. 点击 **+ → Add package from tarball**，选择发行文件 `com.pmx2fbx.converter-0.2.5.tgz`。Unity 会安装官方 FBX Exporter 4.2.1 及其依赖。
 3. 若直接使用源码，选择 **Add package from disk**，打开本目录的 `package.json`。
 4. 为生成带 Avatar Descriptor 的头像，先通过 VRChat Creator Companion 创建 **Avatars** 项目并安装 Avatars SDK。SDK 是可选依赖：没有 SDK 仍可转换模型。
 
@@ -47,12 +47,14 @@ Unity 编辑器插件：选择 PMX，快速生成带骨骼、蒙皮、材质、�
 
 移动到其他 Unity 项目时，应保留整个输出文件夹和插件 Shader，不能只复制 FBX。Humanoid 映射保存在 FBX 的 Unity `.meta` 中；Avatar Descriptor 是 Unity / SDK 组件，保存在 Prefab 中。
 
-## PMX / XPS 通用透明处理（0.2.4）
+## PMX / XPS 通用透明处理
 
 - 自动判断按每个材质的面索引和实际 UV 三角形覆盖范围扫描贴图，包含三角面内部、边缘及重复 UV；不使用整张图的 Alpha 来决定所有共用材质，也不按材质 / 模型名称匹配特例。
 - 不透明区域使用 Opaque。0 / 1 透明遮罩及窄的抗锯齿边缘使用 **Cutout（镂空）**，写入深度以保持头发、蕾丝和衣服之间的遮挡。宽范围连续透明度使用 **Blend（半透明）**。
 - 默认 **近不透明阈值为 0.98**，避免 Alpha=0.99 的皮肤等材质因为细微透明度被转成无深度写入的半透明。该阈值同时用于材质颜色、顶点和贴图 Alpha，可在材质设置中调到 1 保留微弱透明，或单独指定半透明。
 - 逐材质手动设置优先于全局设置，全局设置优先于自动判断；已知 XPS 渲染组的原透明设定仍在自动模式中优先保留。**镂空透明阈值**默认 0.5，可调整边缘裁剪。
+- **0.2.5：半透明遮挡保护**默认开启。半透明 Shader 先对 Alpha ≥ 0.5 的区域仅写入深度，再按原 Alpha 绘制颜色；用于阻止同一蒙皮网格中后绘制的模拟阴影等层覆盖刘海或衣物。小于阈值的柔和边缘不写保护深度，不把全部半透明材质强行改成镂空。
+- **遮挡保护阈值**可调整；材质列表中的 **遮挡保护**可单独选择跟随全局、开启或关闭。需要看穿多个透明层的玻璃等效果，可对该材质关闭保护。深度保护不隐藏任何按名称匹配的材质，也不会改变几何上位于前方的物体。
 - 自动识别不能还原 MMD 专属材质特效或判断所有艺术意图。真正需要柔和透明的特殊材质可单独指定半透明；半透明网格的交叉面仍可能需要模型侧拆分或排序。UV 重复跨度 / 分析量超过限制时回退整图分析并明确警告，避免无限扫描。
 - 更新后需重新转换，旧输出和手动修改过的材质不会自动覆盖；转换报告逐项记录源材质名称、最终模式和判断依据。
 

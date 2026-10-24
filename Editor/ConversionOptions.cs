@@ -5,6 +5,7 @@ using Pmx2Fbx.Core;
 
 namespace Pmx2Fbx
 {
+    public enum OcclusionOverride { Inherit, Enabled, Disabled }
     [Serializable]
     public sealed class BoneOverride
     {
@@ -16,6 +17,7 @@ namespace Pmx2Fbx
     {
         public int MaterialIndex;
         public MaterialAlphaMode Mode;
+        public OcclusionOverride Occlusion;
     }
     [Serializable]
     public sealed class ConversionOptions
@@ -32,6 +34,8 @@ namespace Pmx2Fbx
         public MaterialAlphaMode Transparency;
         public float AlphaCutoff = .5f;
         public float OpaqueAlphaThreshold = .98f;
+        public bool TransparentOcclusion = true;
+        public float OcclusionCutoff = .5f;
         public List<MaterialOverride> MaterialOverrides = new List<MaterialOverride>();
     }
     [Serializable]

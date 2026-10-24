@@ -12,6 +12,7 @@ namespace Pmx2Fbx
     {
         [SerializeField] private string sourcePath = "", outputPath = "Assets/PMXConverted";
         [SerializeField] private ConversionOptions options = new ConversionOptions();
+        [SerializeField] private int settingsVersion;
         private PmxModel model;
         private ConversionReport report;
         private Vector2 scroll;
@@ -23,6 +24,17 @@ namespace Pmx2Fbx
         public static void Open() => GetWindow<ConverterWindow>("模型 → FBX").SetFormat(0);
         [MenuItem("Tools/PMX to FBX/转换 XPS 模型（附属功能）")]
         public static void OpenXps() => GetWindow<ConverterWindow>("模型 → FBX").SetFormat(1);
+        private void OnEnable()
+        {
+            if (options == null) options = new ConversionOptions();
+            // Older serialized windows do not contain the new protection fields.
+            // Initialize them once, preserving explicit choices after migration.
+            if (settingsVersion < 1)
+            {
+                options.TransparentOcclusion = true; options.OcclusionCutoff = .5f;
+                settingsVersion = 1;
+            }
+        }
         private void SetFormat(int value)
         {
             if (value == format) return;
@@ -78,6 +90,8 @@ namespace Pmx2Fbx
             if (format == 0) options.IncludeMorphs = EditorGUILayout.Toggle("导出 BlendShape 表情", options.IncludeMorphs);
             options.Transparency = (MaterialAlphaMode)EditorGUILayout.Popup("透明处理", (int)options.Transparency, AlphaLabels);
             options.AlphaCutoff = EditorGUILayout.Slider("镂空透明阈值", options.AlphaCutoff, .01f, .99f);
+            options.TransparentOcclusion = EditorGUILayout.Toggle("半透明遮挡保护", options.TransparentOcclusion);
+            if (options.TransparentOcclusion) options.OcclusionCutoff = EditorGUILayout.Slider("遮挡保护阈值", options.OcclusionCutoff, .01f, 1);
             using (new EditorGUI.DisabledScope(!File.Exists(sourcePath)))
             {
                 if (GUILayout.Button("读取模型 / 查看骨骼映射")) Read();
@@ -140,6 +154,7 @@ namespace Pmx2Fbx
             EditorGUILayout.HelpBox("自动模式仅检查当前材质实际使用的贴图区域。黑白透明遮罩使用镂空并写入深度，连续透明度使用半透明。特殊材质可在下方单独指定；材质名称不参与自动判断。", MessageType.Info);
             options.OpaqueAlphaThreshold = EditorGUILayout.Slider("近不透明阈值", options.OpaqueAlphaThreshold, .9f, 1);
             EditorGUILayout.HelpBox("默认将 Alpha ≥ 0.98 视为不透明，避免 0.99 的皮肤等材质出现深度排序穿透。需要精确保留微弱透明度时，可将该材质指定为半透明或把阈值设为 1。", MessageType.None);
+            EditorGUILayout.HelpBox("半透明遮挡保护让刘海、衣物的实体区域遮住后绘制的阴影层，同时保留边缘透明度。真正需要层层透视的玻璃等材质，可单独关闭保护。", MessageType.Info);
             var labels = new[] { "跟随全局 / 自动", "不透明", "半透明", "镂空（保留遮挡）" };
             for (int i=0; i<model.Materials.Length; i++)
             {
@@ -152,8 +167,19 @@ namespace Pmx2Fbx
                     if (custom == null) { custom = new MaterialOverride { MaterialIndex=i }; options.MaterialOverrides.Add(custom); }
                     custom.Mode = (MaterialAlphaMode)selected;
                 }
+                EditorGUI.BeginChangeCheck();
+                int occlusion = EditorGUILayout.Popup("    遮挡保护", custom == null ? 0 : (int)custom.Occlusion, new[] { "跟随全局", "开启", "关闭（玻璃等）" });
+                if (EditorGUI.EndChangeCheck())
+                {
+                    if (custom == null) { custom=new MaterialOverride { MaterialIndex=i }; options.MaterialOverrides.Add(custom); }
+                    custom.Occlusion=(OcclusionOverride)occlusion;
+                }
             }
-            if (GUILayout.Button("恢复材质自动判断")) { options.MaterialOverrides.Clear(); options.Transparency=MaterialAlphaMode.Auto; }
+            if (GUILayout.Button("恢复材质自动判断"))
+            {
+                options.MaterialOverrides.Clear(); options.Transparency=MaterialAlphaMode.Auto;
+                options.TransparentOcclusion=true; options.OcclusionCutoff=.5f;
+            }
         }
     }
 }

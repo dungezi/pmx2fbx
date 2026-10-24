@@ -45,8 +45,18 @@ public static class UnityPackageValidation
             if (!shader || ShaderUtil.ShaderHasError(shader)) throw new Exception("Imported shader invalid.");
             var cutout = AssetDatabase.LoadAssetAtPath<Shader>("Assets/PMX2FBX/Shaders/PcToonCutout.shader");
             if (!cutout || ShaderUtil.ShaderHasError(cutout)) throw new Exception("Imported cutout shader invalid.");
+            var transparent = AssetDatabase.LoadAssetAtPath<Shader>("Assets/PMX2FBX/Shaders/PcToonTransparent.shader");
+            if (!transparent || ShaderUtil.ShaderHasError(transparent)) throw new Exception("Imported occlusion-protected transparent shader invalid.");
             var windowType = Dependency.Assembly.GetType("Pmx2Fbx.ConverterWindow", true);
             var window = EditorWindow.GetWindow(windowType);
+            EditorJsonUtility.FromJsonOverwrite("{\"settingsVersion\":0,\"options\":{\"TransparentOcclusion\":false,\"OcclusionCutoff\":0}}", window);
+            var enable = windowType.GetMethod("OnEnable", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            enable.Invoke(window, null);
+            var options = windowType.GetField("options", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(window);
+            var protection = options.GetType().GetField("TransparentOcclusion"); var cutoff = options.GetType().GetField("OcclusionCutoff");
+            if (!(bool)protection.GetValue(options) || Math.Abs((float)cutoff.GetValue(options)-.5f) > .001f) throw new Exception("Legacy window occlusion defaults were not migrated.");
+            protection.SetValue(options, false); cutoff.SetValue(options, .7f); enable.Invoke(window, null);
+            if ((bool)protection.GetValue(options) || Math.Abs((float)cutoff.GetValue(options)-.7f) > .001f) throw new Exception("Existing occlusion preference was overwritten.");
             window.Close();
             windowType.GetMethod("OpenXps").Invoke(null, null);
             EditorWindow.GetWindow(windowType).Close();
