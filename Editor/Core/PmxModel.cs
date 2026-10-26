@@ -29,6 +29,7 @@ namespace Pmx2Fbx.Core
         public byte Flags;
         public int Texture, SphereTexture, IndexCount;
         public MaterialAlphaMode AlphaMode;
+        public float Cutoff = .5f;
     }
     public sealed class PmxBone
     {
@@ -36,6 +37,8 @@ namespace Pmx2Fbx.Core
         public Float3 Position;
         public int Parent;
         public ushort Flags;
+        // Optional world orientation, already expressed in the shared source coordinates.
+        public float[] Rotation;
     }
     public struct VertexOffset
     {
@@ -67,6 +70,9 @@ namespace Pmx2Fbx.Core
         public PmxMaterial[] Materials;
         public PmxBone[] Bones;
         public PmxMorph[] Morphs;
+        public readonly Dictionary<string, int> HumanBones = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        public readonly Dictionary<int, byte[]> EmbeddedTextures = new Dictionary<int, byte[]>();
+        public readonly Dictionary<int, int[]> TextureSamplers = new Dictionary<int, int[]>();
         public int RigidBodyCount, JointCount, SoftBodyCount;
         public readonly List<string> Warnings = new List<string>();
     }

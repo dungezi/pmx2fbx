@@ -96,6 +96,7 @@ public static class UnityValidation
             Check(repairedMesh.normals.All(n => Finite(n.x) && Finite(n.y) && Finite(n.z) && n.sqrMagnitude > .9f), "Repaired FBX normals remain finite and normalized");
             CheckTriangleValidation();
             CheckXpsRigInference();
+            RigVrmValidation.Run();
             CheckMaterialTransparency();
             CheckPmxMaterialCoverage();
             var args = Environment.GetCommandLineArgs(); int externalFlag = Array.IndexOf(args, "-pmx2fbxRealXps");

@@ -1,14 +1,14 @@
-# PMX / XPS → FBX / VRChat PC Unity 插件
+# PMX / XPS / VRM → FBX / VRChat PC Unity 插件
 
-Unity 编辑器插件：选择 PMX，快速生成带骨骼、蒙皮、材质、贴图、BlendShape 的 FBX；附属功能支持 XPS / XNALara 模型转换。勾选 **VRChat PC 适配** 后整理人形骨架、调整尺寸、转换手臂 T Pose，验证重新导入的 Humanoid，并生成头像 Prefab。
+Unity 编辑器插件：选择 PMX，快速生成带骨骼、蒙皮、材质、贴图、BlendShape 的 FBX；附属功能支持 XPS / XNALara 和 VRM 0.x / 1.0 模型转换。勾选 **VRChat PC 适配** 后整理人形骨架、调整尺寸、转换手臂 T Pose，验证重新导入的 Humanoid，并生成头像 Prefab。
 
-适用：**Unity 2022.3 / Built-in Render Pipeline / VRChat PC 人形头像**。VRChat 当前推荐的编辑器版本为 [2022.3.22f1](https://creators.vrchat.com/sdk/upgrade/current-unity-version/)。不需要 Blender 或外部转换程序。
+适用：**Unity 2022.3 / Built-in Render Pipeline / VRChat PC 人形头像**。本插件验证使用的编辑器版本为 [2022.3.22f1](https://creators.vrchat.com/sdk/upgrade/current-unity-version/)。不需要 Blender 或外部转换程序。
 
 ## 安装
 
 ### Unitypackage 版本
 
-1. 在 Unity 2022.3 项目中双击 `PMX2FBX-0.2.5.unitypackage`，或选择 **Assets → Import Package → Custom Package**。
+1. 在 Unity 2022.3 项目中双击 `PMX2FBX-0.3.0.unitypackage`，或选择 **Assets → Import Package → Custom Package**。
 2. 导入全部文件，插件位于 `Assets/PMX2FBX`。
 3. 打开 **Tools → PMX to FBX → 转换 PMX 模型**。若项目没有 FBX Exporter，点击窗口中的 **安装 FBX Exporter**，等待 Package Manager 下载和编译完成。
 4. 按下方流程转换模型。已有可用的 FBX Exporter 时会直接使用它。
@@ -18,7 +18,7 @@ Unity 编辑器插件：选择 PMX，快速生成带骨骼、蒙皮、材质、�
 ### Package Manager 版本
 
 1. 在 Unity 打开 **Window → Package Manager**。
-2. 点击 **+ → Add package from tarball**，选择发行文件 `com.pmx2fbx.converter-0.2.5.tgz`。Unity 会安装官方 FBX Exporter 4.2.1 及其依赖。
+2. 点击 **+ → Add package from tarball**，选择发行文件 `com.pmx2fbx.converter-0.3.0.tgz`。Unity 会安装官方 FBX Exporter 4.2.1 及其依赖。
 3. 若直接使用源码，选择 **Add package from disk**，打开本目录的 `package.json`。
 4. 为生成带 Avatar Descriptor 的头像，先通过 VRChat Creator Companion 创建 **Avatars** 项目并安装 Avatars SDK。SDK 是可选依赖：没有 SDK 仍可转换模型。
 
@@ -81,6 +81,17 @@ XPS 使用相同的 FBX 导出、贴图复制、材质重映射、独立输出�
 
 ## VRChat PC 选项做什么
 
+### 0.3.0 通用骨骼识别改进
+
+- 识别 MMD 常见日文 / 全角数字、Mixamo 命名空间、部分 Bip / Valve / VRoid 命名前缀及左右后缀；补充 ForeArm、UpLeg、ToeBase 和完整的「人差指」写法。
+- 结合已知父子链处理同名候选，不再取数组中遇到的第一个。无法唯一确认的插槽保持未映射，必要骨骼缺失时提示修正；不会把含有“腕”等字样的任意辅助骨骼当作人体关节。
+- 区分 MMD 拇指的 0/1/2 和 1/2/3 编号，避免三个关节错位。
+- 映射校验拒绝重复插槽占用、反向父子关系、跨肢体链和重叠关节。手动覆盖仍优先，但必须通过校验。
+- 整理骨架时保留有效的扭转骨 / 辅助骨链，仅修复缺少的语义祖先关系；沿肢体主链调整子级顺序。T Pose 时辅助骨骼随父骨骼移动。
+- 报告记录每个人形插槽对应的源骨骼索引及名称。VRM 优先采用文件内明确的人形定义，不用名称猜测未声明的可选关节。
+
+这些规则面向通用骨架，不包含模型名、素材名或单个角色的特例。未知命名和多套同名骨架仍可能需要手动指定；识别和动作验证通过不等于已在 VRChat 实机验证。
+
 - 将 PMX 朝向转换为 Unity 的 +Z 朝向，主 UV 的 V 坐标翻转；额外 UV 数据保留。
 - 自动匹配躯干、手脚、肩颈、眼睛与手指，可手动覆盖映射。
 - 修复常见 MMD 上下半身分离：Hips 成为所有映射骨骼的祖先。
@@ -96,6 +107,19 @@ XPS 使用相同的 FBX 导出、贴图复制、材质重映射、独立输出�
 这是转换与准备工具。有效 Humanoid 不等于任何源模型都能自动达到上传要求。最终以实际项目的 SDK Builder 校验为准；补建骨骼的位置、视点和材质效果需要检查。完整音素口型、眨眼 / Eye Look、表情菜单、PhysBones 和性能优化需要按模型另行设置。暂不支持 Quest / Android。
 
 ## 支持范围
+
+### VRM 附属功能
+
+打开 **Tools → PMX to FBX → 转换 VRM 模型（附属功能）**，选择 `.vrm`，或拖入转换窗口。默认输出到 `Assets/VRMConverted`，普通转换比例为 1 米；需要 PC 人形头像时勾选 VRChat 选项。
+
+- 直接读取 VRM 0.x / 1.0 的 GLB 数据，无需安装 UniVRM。两种版本的前向轴分别处理，统一到 Unity +Z。
+- 保留当前场景的三角网格、材质分组、骨架、绑定姿态和主贴图；多网格合并导出。支持 FLOAT / 归一化属性、交错缓冲、稀疏 accessor、逆绑定矩阵及内嵌 PNG / JPEG。
+- 顶点 POSITION 表情转为 BlendShape；报告记录原始通道名称。默认表情权重归零。VRM expression 的组合规则、二值开关及材质 / 骨骼表情不自动配置为 VRChat 表情系统。
+- 保留基础颜色、顶点色、OPAQUE / MASK / BLEND、原始镂空阈值、主贴图 UV 通道 / 变换、纹理重复模式及关节原始旋转。VRM 的透明模式优先于自动 Alpha 推断，仍可手动覆盖。
+- 内嵌贴图仅写入本次转换的新输出目录。源 VRM 保持不变；读取和查看映射不会在源文件旁解包。
+- MToon、法线 / 高光 / 发光贴图、描边、LookAt、SpringBone、约束和动画没有等价转换；使用本插件的基础 PC Toon，相关限制写入报告。超过四个权重时保留最大的四个并归一化。
+- 不支持外置资源、压缩网格 / 压缩纹理及未知的必需扩展；遇到不支持的必需数据、越界、截断或无效人形定义会报错。单文件上限 512 MB。
+- FBX 不能承载 VRM 的授权元数据，转换后请保留原始 VRM 及许可文件。当前 VRM 验证使用完全合成样本；尚未提供真实 VRM 素材，不能声称覆盖所有导出器。
 
 | 项目 | 状态 |
 | --- | --- |
@@ -117,7 +141,7 @@ XPS 使用相同的 FBX 导出、贴图复制、材质重映射、独立输出�
 
 `Tests~/CoreTests.cs` 使用完全合成的 PMX 数据测试读取器。`Tests~/UnityValidation.cs` 验证实际 FBX 导出 / 重新导入、Humanoid、骨骼绑定、材质、表情、尺寸、重复导出、骨骼修复与失败处理。`Tests~/UnityPackageValidation.cs` 负责原生 unitypackage 导出与无依赖导入验证。可参考 `Tools~/PrepareValidation.ps1` 和 `Tools~/PrepareUnityPackage.ps1` 在独立目录准备验证项目；其缓存路径与 Unity 路径需要按本机调整。
 
-公开转换入口为 `PmxConverter.Convert(sourcePath, outputFolder, options)`（兼容原 API，支持两种格式），以及 `XpsConverter.Convert(sourcePath, outputFolder, options)`，返回 `ConversionReport`。XPS 入口省略 options 时采用普通转换 / 比例 1；传入 options 时按参数执行。输出目录必须位于当前项目 `Assets` 内。应检查 `ConversionSucceeded` 和 `Errors`；不要仅凭 FBX 文件存在判断成功。
+公开转换入口为 `PmxConverter.Convert(sourcePath, outputFolder, options)`（兼容原 API，支持三种格式），以及 `XpsConverter.Convert(sourcePath, outputFolder, options)`、`VrmConverter.Convert(sourcePath, outputFolder, options)`，返回 `ConversionReport`。XPS / VRM 入口省略 options 时采用普通转换 / 比例 1；传入 options 时按参数执行。输出目录必须位于当前项目 `Assets` 内。应检查 `ConversionSucceeded` 和 `Errors`；不要仅凭 FBX 文件存在判断成功。
 
 ## 参考与许可
 
@@ -127,6 +151,7 @@ XPS 使用相同的 FBX 导出、贴图复制、材质重映射、独立输出�
 - [Unity MMD Tools](https://github.com/CandidumGames/UnityMMDTools)：PMX 朝向、UV、Humanoid 构建思路参考，MIT；未引入其物理或 Burst 运行库。
 - [XNALaraMesh](https://github.com/johnzero7/XNALaraMesh)：XPS 二进制 / ASCII 字段布局、字符串长度编码、UV 与权重布局参考；未包含其 Blender 脚本。
 - [Unity 官方 FBX Exporter](https://github.com/Unity-Technologies/com.unity.formats.fbx)：作为 Package Manager 依赖，按 Unity Companion License 与 Autodesk SDK 的许可提供。
+- [VRM 官方规范](https://github.com/vrm-c/vrm-specification)、[VRM 1.0 版本差异](https://vrm.dev/en/vrm1/changed/)及 [glTF 2.0 官方规范](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html)：VRM 扩展、骨骼定义、版本朝向及二进制布局参考；读取器独立实现，未打包 UniVRM。
 - [VRChat Rig Requirements](https://creators.vrchat.com/avatars/rig-requirements/)：骨架要求；该页面标注部分内容过时，SDK3 不采用 SDK2 的 UpperChest / 手指限制。
 - [VRChat Performance Ranks](https://creators.vrchat.com/avatars/avatar-performance-ranking-system/)：PC 参考性能阈值。
 

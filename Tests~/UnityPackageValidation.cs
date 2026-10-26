@@ -39,6 +39,7 @@ public static class UnityPackageValidation
         {
             if (Dependency == null) throw new Exception("Imported assembly not loaded.");
             if (Dependency.Assembly.GetType("Pmx2Fbx.Core.XpsReader") == null || Dependency.Assembly.GetType("Pmx2Fbx.XpsConverter") == null) throw new Exception("XPS extension missing in imported package.");
+            if (Dependency.Assembly.GetType("Pmx2Fbx.VrmReader") == null || Dependency.Assembly.GetType("Pmx2Fbx.VrmConverter") == null) throw new Exception("VRM extension missing in imported package.");
             if (Ready) throw new Exception("Clean import test unexpectedly includes FBX Exporter.");
             if (!AssetDatabase.IsValidFolder("Assets/PMX2FBX/Editor")) throw new Exception("Imported Editor files missing.");
             var shader = AssetDatabase.LoadAssetAtPath<Shader>("Assets/PMX2FBX/Shaders/PcToon.shader");
@@ -59,6 +60,8 @@ public static class UnityPackageValidation
             if ((bool)protection.GetValue(options) || Math.Abs((float)cutoff.GetValue(options)-.7f) > .001f) throw new Exception("Existing occlusion preference was overwritten.");
             window.Close();
             windowType.GetMethod("OpenXps").Invoke(null, null);
+            EditorWindow.GetWindow(windowType).Close();
+            windowType.GetMethod("OpenVrm").Invoke(null, null);
             EditorWindow.GetWindow(windowType).Close();
             File.WriteAllText("unitypackage-import-result.json", "{\"passed\":true,\"dependencyAbsent\":true,\"editorWindowOpened\":true,\"xpsExtensionLoaded\":true,\"unity\":\"" + Application.unityVersion + "\"}");
             Debug.Log("PMX2FBX_UNITYPACKAGE_CLEAN_IMPORT_PASS");

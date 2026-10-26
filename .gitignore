@@ -20,6 +20,8 @@ bin/
 # Local user models and textures are never included in source publication.
 /*.xps
 /*.pmx
+/*.vrm
+/*.glb
 /*.mesh
 /*.ascii
 /*.png

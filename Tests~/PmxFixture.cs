@@ -8,7 +8,7 @@ namespace Pmx2Fbx.Tests
     public static class PmxFixture
     {
         public static byte[] Create(bool utf16 = false, int width = 1, int skinning = 0, bool humanoid = false, bool missingChest = false, bool cycle = false,
-            bool atlasUvs = false, float firstAlpha = 1, float secondAlpha = 1)
+            bool atlasUvs = false, float firstAlpha = 1, float secondAlpha = 1, bool withTwist = false)
         {
             using (var stream = new MemoryStream())
             using (var w = new BinaryWriter(stream))
@@ -26,6 +26,12 @@ namespace Pmx2Fbx.Tests
                     new[] {-.09f,.95f,0f}, new[] {-.09f,.5f,0f}, new[] {-.09f,.08f,0f}
                 };
                 int[] parents = { -1, -1, 1, 2, 3, 2, 5, 6, 7, 2, 9, 10, 11, 0, 13, 14, 0, 16, 17 };
+                if (humanoid && withTwist)
+                {
+                    Array.Resize(ref names,20); names[19]="左腕捩";
+                    Array.Resize(ref locations,20); locations[19]=new[]{.3f,1.32f,0f};
+                    Array.Resize(ref parents,20); parents[19]=6; parents[7]=19;
+                }
                 w.Write(Encoding.ASCII.GetBytes("PMX ")); w.Write(skinning == 4 ? 2.1f : 2f);
                 w.Write((byte)8); w.Write((byte)(utf16 ? 0 : 1)); w.Write((byte)1);
                 for (int i = 0; i < 6; i++) w.Write((byte)width);
@@ -35,6 +41,7 @@ namespace Pmx2Fbx.Tests
                 for (int i = 0; i < vertexCount; i++)
                 {
                     int bone = i < 6 ? i >= 3 ? 4 : 0 : i < 9 ? i : i + 1;
+                    if (humanoid && withTwist && i==7) bone=19;
                     if (i >= 6) { var armPosition = locations[bone]; vector(armPosition[0],armPosition[1],-.02f * (i % 3)); }
                     else vector(i % 3 == 0 ? -.1f : .1f, i < 3 ? 0 : 1.75f, -.02f * (i % 3));
                     vector(0,0,-1);

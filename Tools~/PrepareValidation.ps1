@@ -5,6 +5,7 @@ $validation = Join-Path $workspace '.validation~\UnityProject'
 $cache = Join-Path $env:LOCALAPPDATA 'Unity\cache\npm\packages.unity.com'
 New-Item -ItemType Directory -Force -Path "$validation\Assets\Editor", "$validation\Packages", "$validation\ProjectSettings" | Out-Null
 Copy-Item -LiteralPath "$workspace\Tests~\PmxFixture.cs", "$workspace\Tests~\XpsFixture.cs", "$workspace\Tests~\UnityValidation.cs" -Destination "$validation\Assets\Editor" -Force
+Copy-Item -LiteralPath "$workspace\Tests~\VrmFixture.cs", "$workspace\Tests~\RigVrmValidation.cs" -Destination "$validation\Assets\Editor" -Force
 $cachedPackages = @{'com.unity.formats.fbx'='4.2.1'; 'com.autodesk.fbx'='4.2.1'; 'com.unity.timeline'='1.7.6'; 'com.unity.test-framework'='1.1.33'; 'com.unity.ext.nunit'='1.0.6'}
 foreach ($packageName in $cachedPackages.Keys) {
     $packageSource = Join-Path $cache "$packageName\$($cachedPackages[$packageName])\package"

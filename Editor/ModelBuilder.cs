@@ -53,6 +53,12 @@ namespace Pmx2Fbx
                     bones[i] = new GameObject("Bone_" + i.ToString("D5")).transform;
                     bones[i].SetParent(armature);
                     bones[i].position = source.Bones.Length > 0 ? Convert(source.Bones[i].Position, scale, axis) + offset : Vector3.zero;
+                    if (source.Bones.Length > 0 && source.Bones[i].Rotation != null)
+                    {
+                        var q = source.Bones[i].Rotation;
+                        var basis = Matrix4x4.Scale(new Vector3(axis.X, axis.Y, axis.Z));
+                        bones[i].rotation = (basis * Matrix4x4.Rotate(new Quaternion(q[0],q[1],q[2],q[3])) * basis).rotation;
+                    }
                 }
                 for (int i = 0; i < source.Bones.Length; i++)
                     if (source.Bones[i].Parent >= 0) bones[i].SetParent(bones[source.Bones[i].Parent], true);
@@ -190,18 +196,26 @@ namespace Pmx2Fbx
             {
                 string name = source.Textures[i];
                 if (string.IsNullOrWhiteSpace(name)) continue;
+                bool embedded = source.EmbeddedTextures.TryGetValue(i, out var imageBytes);
                 string path = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(pmxPath), name.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar)));
                 if (!File.Exists(path) && source.Format == "XPS")
                 {
                     string local = Path.Combine(Path.GetDirectoryName(pmxPath), Path.GetFileName(name.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar)));
                     if (File.Exists(local)) { path = Path.GetFullPath(local); report.Infos.Add("XPS 原纹理路径不可用，已使用模型旁的同名文件：" + Path.GetFileName(path)); }
                 }
-                if (!File.Exists(path)) { report.Warnings.Add("纹理缺失：" + name); continue; }
+                if (!embedded && !File.Exists(path)) { report.Warnings.Add("纹理缺失：" + name); continue; }
                 string extension = Path.GetExtension(path).ToLowerInvariant();
                 if (!new[] { ".png", ".jpg", ".jpeg", ".tga", ".bmp", ".psd", ".tif", ".tiff" }.Contains(extension))
                 { report.Warnings.Add("Unity 不支持此纹理格式：" + name + "；请先转换为 PNG。"); continue; }
                 string destination = folder + "/Textures/Texture_" + i.ToString("D5") + extension;
-                File.Copy(path, destination, false); AssetDatabase.ImportAsset(destination, ImportAssetOptions.ForceSynchronousImport);
+                if (embedded) File.WriteAllBytes(destination, imageBytes); else File.Copy(path, destination, false);
+                AssetDatabase.ImportAsset(destination, ImportAssetOptions.ForceSynchronousImport);
+                if (source.TextureSamplers.TryGetValue(i, out var sampler) && AssetImporter.GetAtPath(destination) is TextureImporter settings)
+                {
+                    settings.wrapModeU = Wrap(sampler[0]); settings.wrapModeV = Wrap(sampler[1]);
+                    settings.filterMode = sampler[2] == 9728 ? FilterMode.Point : FilterMode.Bilinear;
+                    settings.SaveAndReimport();
+                }
                 var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(destination);
                 if (texture)
                 {
@@ -231,7 +245,7 @@ namespace Pmx2Fbx
                 if (mode == MaterialAlphaMode.Auto)
                 {
                     mode = pmx.AlphaMode;
-                    reason = "XPS 渲染组设定";
+                    reason = source.Format == "VRM" ? "VRM 材质透明定义" : "XPS 渲染组设定";
                     if (mode == MaterialAlphaMode.Auto)
                     {
                         reason = "当前材质的颜色、顶点及实际 UV 覆盖像素";
@@ -258,7 +272,8 @@ namespace Pmx2Fbx
                     ? custom.Occlusion == OcclusionOverride.Enabled : options.TransparentOcclusion;
                 if (material.HasProperty("_DepthPrepass")) material.SetFloat("_DepthPrepass", occlusion ? 1 : 0);
                 if (material.HasProperty("_DepthCutoff")) material.SetFloat("_DepthCutoff", options.OcclusionCutoff);
-                if (material.HasProperty("_Cutoff")) material.SetFloat("_Cutoff", Mathf.Clamp01(options.AlphaCutoff));
+                float cutoff = source.Format == "VRM" && options.Transparency == MaterialAlphaMode.Auto && (custom == null || custom.Mode == MaterialAlphaMode.Auto) ? pmx.Cutoff : options.AlphaCutoff;
+                if (material.HasProperty("_Cutoff")) material.SetFloat("_Cutoff", Mathf.Clamp01(cutoff));
                 if (material.HasProperty("_Cull")) material.SetInt("_Cull", (pmx.Flags & 1) != 0 ? 0 : 2);
                 if (transparent && shader.name == "Standard")
                 {
@@ -278,6 +293,7 @@ namespace Pmx2Fbx
             report.Warnings.Add(source.Format == "XPS" ? "XPS 材质使用基础 PC Toon，特殊渲染组、法线与高光需要手动配置。透明排序请在 Unity 中检查。" : "材质使用基础 PC Toon；MMD Toon / Sphere / 描边效果需要按需要手动调整。透明排序请在 Unity 中检查。");
             return materials;
         }
+        private static TextureWrapMode Wrap(int mode) => mode == 33071 ? TextureWrapMode.Clamp : mode == 33648 ? TextureWrapMode.Mirror : TextureWrapMode.Repeat;
         private static AlphaCoverage ReadTextureAlpha(string path, float opaqueThreshold)
         {
             var importer = AssetImporter.GetAtPath(path) as TextureImporter;

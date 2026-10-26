@@ -14,6 +14,7 @@ namespace Pmx2Fbx
         [SerializeField] private ConversionOptions options = new ConversionOptions();
         [SerializeField] private int settingsVersion;
         private PmxModel model;
+        private Dictionary<HumanBodyBones, int> autoMapping;
         private ConversionReport report;
         private Vector2 scroll;
         private bool mapping;
@@ -24,6 +25,8 @@ namespace Pmx2Fbx
         public static void Open() => GetWindow<ConverterWindow>("模型 → FBX").SetFormat(0);
         [MenuItem("Tools/PMX to FBX/转换 XPS 模型（附属功能）")]
         public static void OpenXps() => GetWindow<ConverterWindow>("模型 → FBX").SetFormat(1);
+        [MenuItem("Tools/PMX to FBX/转换 VRM 模型（附属功能）")]
+        public static void OpenVrm() => GetWindow<ConverterWindow>("模型 → FBX").SetFormat(2);
         private void OnEnable()
         {
             if (options == null) options = new ConversionOptions();
@@ -39,14 +42,14 @@ namespace Pmx2Fbx
         {
             if (value == format) return;
             format = value; model = null; report = null; sourcePath = "";
-            outputPath = value == 0 ? "Assets/PMXConverted" : "Assets/XPSConverted";
+            outputPath = value == 0 ? "Assets/PMXConverted" : value == 1 ? "Assets/XPSConverted" : "Assets/VRMConverted";
             options = new ConversionOptions { Scale = value == 0 ? .08f : 1f, VrChat = value == 0 };
         }
 
         private void OnGUI()
         {
             scroll = EditorGUILayout.BeginScrollView(scroll);
-            SetFormat(EditorGUILayout.Popup("源模型格式", format, new[] { "PMX → FBX", "XPS → FBX（附属功能）" }));
+            SetFormat(EditorGUILayout.Popup("源模型格式", format, new[] { "PMX → FBX", "XPS → FBX（附属功能）", "VRM → FBX（附属功能）" }));
             if (!FbxDependency.IsReady)
             {
                 EditorGUILayout.HelpBox("首次使用需要 Unity 官方 FBX Exporter。点击下方按钮安装，完成后可直接转换。", MessageType.Info);
@@ -55,22 +58,22 @@ namespace Pmx2Fbx
                 if (!string.IsNullOrEmpty(FbxDependency.LastError)) EditorGUILayout.HelpBox(FbxDependency.LastError, MessageType.Error);
                 if (FbxDependency.IsInstalling) Repaint();
             }
-            EditorGUILayout.HelpBox(format == 0 ? "转换 PMX 2.0 / 2.1；保留骨骼蒙皮、主纹理与顶点 / 组表情。VRChat 模式面向 PC 人形头像。" : "支持 .xps、.mesh 和 .mesh.ascii；保留骨骼蒙皮、顶点颜色、UV 和主贴图。XPS 不提供 BlendShape；可选 VRChat PC 人形适配。", MessageType.Info);
+            EditorGUILayout.HelpBox(format == 0 ? "转换 PMX 2.0 / 2.1；保留骨骼蒙皮、主纹理与顶点 / 组表情。VRChat 模式面向 PC 人形头像。" : format == 1 ? "支持 .xps、.mesh 和 .mesh.ascii；保留骨骼蒙皮、顶点颜色、UV 和主贴图。XPS 不提供 BlendShape；可选 VRChat PC 人形适配。" : "支持 VRM 0.x / 1.0，直接读取内嵌网格、贴图、蒙皮、顶点表情及人形骨骼定义，无需安装 UniVRM。MToon、SpringBone、LookAt 等需要另行配置。", MessageType.Info);
             EditorGUILayout.BeginHorizontal();
             EditorGUI.BeginChangeCheck(); sourcePath = EditorGUILayout.TextField("模型文件", sourcePath);
             if (EditorGUI.EndChangeCheck()) { model = null; options.BoneOverrides.Clear(); options.MaterialOverrides.Clear(); }
             if (GUILayout.Button("浏览", GUILayout.Width(55)))
             {
-                string selected = EditorUtility.OpenFilePanelWithFilters("选择模型", "", format == 0 ? new[] { "PMX", "pmx" } : new[] { "XPS / XNALara", "xps,mesh,ascii" });
+                string selected = EditorUtility.OpenFilePanelWithFilters("选择模型", "", format == 0 ? new[] { "PMX", "pmx" } : format == 1 ? new[] { "XPS / XNALara", "xps,mesh,ascii" } : new[] { "VRM", "vrm" });
                 if (!string.IsNullOrEmpty(selected)) { sourcePath = selected; model = null; options.BoneOverrides.Clear(); options.MaterialOverrides.Clear(); }
             }
             EditorGUILayout.EndHorizontal();
             var drag = Event.current;
-            if ((drag.type == EventType.DragUpdated || drag.type == EventType.DragPerform) && DragAndDrop.paths.Any(ModelReader.IsSupported))
+            if ((drag.type == EventType.DragUpdated || drag.type == EventType.DragPerform) && DragAndDrop.paths.Any(SourceModelReader.IsSupported))
             {
                 DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
                 if (drag.type == EventType.DragPerform)
-                { DragAndDrop.AcceptDrag(); string selected = DragAndDrop.paths.First(ModelReader.IsSupported); SetFormat(ModelReader.IsXps(selected) ? 1 : 0); sourcePath = selected; model = null; options.BoneOverrides.Clear(); options.MaterialOverrides.Clear(); }
+                { DragAndDrop.AcceptDrag(); string selected = DragAndDrop.paths.First(SourceModelReader.IsSupported); SetFormat(SourceModelReader.IsVrm(selected) ? 2 : ModelReader.IsXps(selected) ? 1 : 0); sourcePath = selected; model = null; options.BoneOverrides.Clear(); options.MaterialOverrides.Clear(); }
                 drag.Use();
             }
             outputPath = EditorGUILayout.TextField("输出目录", outputPath);
@@ -87,7 +90,7 @@ namespace Pmx2Fbx
             }
             else options.Scale = EditorGUILayout.FloatField("模型单位 → 米", options.Scale);
             options.Rotate180 = EditorGUILayout.Toggle("额外旋转 180°（修正朝向）", options.Rotate180);
-            if (format == 0) options.IncludeMorphs = EditorGUILayout.Toggle("导出 BlendShape 表情", options.IncludeMorphs);
+            if (format != 1) options.IncludeMorphs = EditorGUILayout.Toggle("导出 BlendShape 表情", options.IncludeMorphs);
             options.Transparency = (MaterialAlphaMode)EditorGUILayout.Popup("透明处理", (int)options.Transparency, AlphaLabels);
             options.AlphaCutoff = EditorGUILayout.Slider("镂空透明阈值", options.AlphaCutoff, .01f, .99f);
             options.TransparentOcclusion = EditorGUILayout.Toggle("半透明遮挡保护", options.TransparentOcclusion);
@@ -127,12 +130,13 @@ namespace Pmx2Fbx
         }
         private void Read()
         {
-            try { model = ModelReader.Read(sourcePath); mapping = true; }
+            try { model = SourceModelReader.Read(sourcePath); autoMapping = null; mapping = true; }
             catch (Exception e) { model = null; report = new ConversionReport(); report.Errors.Add(e.Message); }
         }
         private void DrawMappings()
         {
-            var automatic = HumanoidRig.AutoMap(model);
+            var automatic = autoMapping ?? (autoMapping = HumanoidRig.AutoMap(model));
+            EditorGUILayout.HelpBox("自动映射结合名称及父子链。存在同名歧义时保持未映射，请确认关节；VRM 优先读取文件内的人形定义。", MessageType.Info);
             var labels = new[] { "不映射 / 必要时自动补建" }.Concat(model.Bones.Select((b, i) => i + ": " + b.Name + " / " + b.EnglishName)).ToArray();
             foreach (HumanBodyBones human in Enum.GetValues(typeof(HumanBodyBones)))
             {

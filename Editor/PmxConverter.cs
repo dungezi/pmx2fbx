@@ -24,7 +24,7 @@ namespace Pmx2Fbx
             string output = Path.GetFullPath(outputFolder);
             if (!output.StartsWith(assets + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("输出目录必须位于当前 Unity 项目的 Assets 内。");
-            if (!ModelReader.IsSupported(pmxPath)) throw new ArgumentException("请选择 .pmx、.xps、.mesh 或 .mesh.ascii 文件。");
+            if (!SourceModelReader.IsSupported(pmxPath)) throw new ArgumentException("请选择 .pmx、.xps、.mesh、.mesh.ascii 或 .vrm 文件。");
             if (options.VrChat && options.NormalizeHeight && (options.Height < .2f || options.Height > 5)) throw new ArgumentException("目标身高应在 0.2 到 5 米之间。");
             string parent = "Assets" + output.Substring(assets.Length).Replace('\\', '/');
             Directory.CreateDirectory(parent);
@@ -35,7 +35,7 @@ namespace Pmx2Fbx
             var report = new ConversionReport { Source = Path.GetFullPath(pmxPath), VrChat = options.VrChat };
             try
             {
-                var source = ModelReader.Read(pmxPath);
+                var source = SourceModelReader.Read(pmxPath);
                 report.Format = source.Format;
                 report.Warnings.AddRange(source.Warnings);
                 report.Vertices = source.Vertices.Length; report.Triangles = source.Indices.Length / 3;

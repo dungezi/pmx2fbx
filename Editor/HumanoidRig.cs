@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using Pmx2Fbx.Core;
 using UnityEngine;
 
@@ -34,12 +35,12 @@ namespace Pmx2Fbx
                 string jp = left ? "左" : "右", en = left ? "Left" : "Right", shortSide = left ? "l" : "r";
                 Add(a, en + "Shoulder", jp + "肩", en + "Shoulder", "shoulder" + shortSide, "arm " + en + " clavicle", "arm " + en + " shoulder 1");
                 Add(a, en + "UpperArm", jp + "腕", en + "UpperArm", en + "Arm", "arm" + shortSide, "arm " + en + " shoulder", "arm " + en + " shoulder 2");
-                Add(a, en + "LowerArm", jp + "ひじ", jp + "肘", en + "LowerArm", en + "Elbow", "elbow" + shortSide, "arm " + en + " elbow", "arm " + en + " elbow 1");
+                Add(a, en + "LowerArm", jp + "ひじ", jp + "肘", en + "LowerArm", en + "Elbow", "elbow" + shortSide, "arm " + en + " elbow", "arm " + en + " elbow 1", en + "ForeArm");
                 Add(a, en + "Hand", jp + "手首", en + "Hand", en + "Wrist", "wrist" + shortSide, "arm " + en + " wrist");
-                Add(a, en + "UpperLeg", jp + "足", jp + "足D", en + "UpperLeg", en + "Leg", en + "Thigh", "leg" + shortSide, "leg " + en + " thigh", "leg " + en + " thigh 1");
-                Add(a, en + "LowerLeg", jp + "ひざ", jp + "膝", jp + "ひざD", en + "LowerLeg", en + "Knee", "knee" + shortSide, "leg " + en + " knee");
+                Add(a, en + "UpperLeg", jp + "足", jp + "足D", en + "UpperLeg", en + "Leg", en + "Thigh", "leg" + shortSide, "leg " + en + " thigh", "leg " + en + " thigh 1", en + "UpLeg");
+                Add(a, en + "LowerLeg", jp + "ひざ", jp + "膝", jp + "ひざD", en + "LowerLeg", en + "Knee", "knee" + shortSide, "leg " + en + " knee", en + "Leg");
                 Add(a, en + "Foot", jp + "足首", jp + "足首D", en + "Foot", en + "Ankle", "ankle" + shortSide, "leg " + en + " ankle");
-                Add(a, en + "Toes", jp + "つま先", jp + "足先EX", en + "Toes", en + "Toe", "toe" + shortSide, "leg " + en + " toes");
+                Add(a, en + "Toes", jp + "つま先", jp + "足先EX", en + "Toes", en + "Toe", "toe" + shortSide, "leg " + en + " toes", en + "ToeBase");
                 Add(a, en + "Eye", jp + "目", en + "Eye", "eye" + shortSide);
                 string[] fingers = { "Thumb", "Index", "Middle", "Ring", "Little" };
                 string[] japanese = { "親指", "人指", "中指", "薬指", "小指" };
@@ -50,13 +51,38 @@ namespace Pmx2Fbx
                         int number = f == 0 ? s : s + 1;
                         Add(a, en + fingers[f] + segments[s], jp + japanese[f] + number,
                             jp + japanese[f] + (char)('０' + number), en + fingers[f] + segments[s], en + fingers[f] + (s + 1));
+                        var slot = (HumanBodyBones)Enum.Parse(typeof(HumanBodyBones), en + fingers[f] + segments[s]);
+                        a[slot] = a[slot].Concat(new[] { en + "Hand" + fingers[f] + (s + 1), jp + (f == 1 ? "人差指" : japanese[f]) + number,
+                            fingers[f] + (s + 1) + shortSide, shortSide + fingers[f] + (s + 1),
+                            fingers[f] + "0" + (s + 1) + shortSide, "f" + fingers[f].ToLowerInvariant() + "0" + (s + 1) + shortSide,
+                            shortSide + "Finger" + f + (s == 0 ? "" : s.ToString()) }).ToArray();
                     }
+                foreach (string part in new[] { "Shoulder", "UpperArm", "LowerArm", "Hand", "UpperLeg", "LowerLeg", "Foot", "Toes", "Eye" })
+                {
+                    var slot = (HumanBodyBones)Enum.Parse(typeof(HumanBodyBones), en + part);
+                    var extra = new List<string> { part + shortSide, shortSide + part };
+                    if (part == "UpperArm") extra.AddRange(new[] { "upper_arm" + shortSide });
+                    if (part == "LowerArm") extra.AddRange(new[] { "forearm" + shortSide, shortSide + "forearm" });
+                    if (part == "UpperLeg") extra.AddRange(new[] { "thigh" + shortSide, shortSide + "thigh" });
+                    if (part == "LowerLeg") extra.AddRange(new[] { "calf" + shortSide, shortSide + "calf", "shin" + shortSide });
+                    if (part == "Shoulder") extra.AddRange(new[] { "clavicle" + shortSide, shortSide + "clavicle" });
+                    a[slot] = a[slot].Concat(extra).ToArray();
+                }
             }
             return a;
         }
         private static void Add(Dictionary<HumanBodyBones, string[]> a, string human, params string[] names)
             => a[(HumanBodyBones)Enum.Parse(typeof(HumanBodyBones), human)] = names;
-        private static string Normalize(string name) => new string((name ?? "").ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
+        private static string Normalize(string name)
+        {
+            name = (name ?? "").Normalize(NormalizationForm.FormKC).ToLowerInvariant();
+            int separator = Math.Max(name.LastIndexOf(':'), name.LastIndexOf('|'));
+            if (separator >= 0) name = name.Substring(separator + 1);
+            name = new string(name.Where(char.IsLetterOrDigit).ToArray());
+            foreach (string prefix in new[] { "valvebipedbip001", "valvebipedbip01", "mixamorig", "bip001", "bip01", "jbipc", "jbip", "def" })
+                if (name.StartsWith(prefix, StringComparison.Ordinal)) { name = name.Substring(prefix.Length); break; }
+            return name;
+        }
 
         public static Dictionary<HumanBodyBones, int> AutoMap(PmxModel model)
             => AutoMap(model, out _);
@@ -64,22 +90,97 @@ namespace Pmx2Fbx
         {
             var result = new Dictionary<HumanBodyBones, int>();
             var used = new HashSet<int>();
+            // VRM's declared humanoid is authoritative. Do not fill optional slots by guessing names.
+            if (model.HumanBones.Count > 0)
+            {
+                foreach (var pair in model.HumanBones)
+                {
+                    if (!Enum.TryParse(pair.Key, true, out HumanBodyBones slot) || slot == HumanBodyBones.LastBone) continue;
+                    if (pair.Value < 0 || pair.Value >= model.Bones.Length || !used.Add(pair.Value))
+                        throw new InvalidDataException("文件内的人形骨骼定义重复或越界。");
+                    result.Add(slot, pair.Value);
+                }
+                inferred = new List<HumanBodyBones>(); return result;
+            }
+            var candidates = new Dictionary<HumanBodyBones, Dictionary<int, int>>();
+            var primaryNames = model.Bones.Select(b => Normalize(b.Name)).ToArray();
+            var englishNames = model.Bones.Select(b => Normalize(b.EnglishName)).ToArray();
             foreach (var pair in Aliases)
             {
-                int found = -1;
-                foreach (string alias in pair.Value)
+                var choices = new Dictionary<int, int>(); candidates[pair.Key] = choices;
+                var names = pair.Value;
+                // MMD thumbs use 0/1/2, while many exported rigs use 1/2/3.
+                if (pair.Key.ToString().Contains("Thumb"))
                 {
-                    string key = Normalize(alias);
-                    found = Array.FindIndex(model.Bones, b => Normalize(b.Name) == key || Normalize(b.EnglishName) == key);
-                    if (found >= 0 && !used.Contains(found)) break;
-                    found = -1;
+                    string jp = pair.Key.ToString().StartsWith("Left") ? "左親指" : "右親指";
+                    bool zero = primaryNames.Contains(Normalize(jp + "0")) || englishNames.Contains(Normalize(jp + "0"));
+                    if (!zero)
+                    {
+                        int segment = pair.Key.ToString().EndsWith("Proximal") ? 1 : pair.Key.ToString().EndsWith("Intermediate") ? 2 : 3;
+                        names = names.Where(n => !n.StartsWith(jp, StringComparison.Ordinal)).Concat(new[] { jp + segment }).ToArray();
+                    }
                 }
-                if (found >= 0) { result[pair.Key] = found; used.Add(found); }
+                var normalized = names.Select(Normalize).ToArray();
+                for (int i = 0; i < model.Bones.Length; i++)
+                    for (int a = 0; a < names.Length; a++)
+                        if (primaryNames[i] == normalized[a] || englishNames[i] == normalized[a])
+                        { choices[i] = 100 - Math.Min(a, 30); break; }
+            }
+            // Resolve in rounds: an established ancestor/descendant chain disambiguates duplicate names.
+            // Equal candidates remain unmapped rather than depending on source array ordering.
+            for (int round = 0; round < 4; round++)
+            foreach (var pair in candidates.OrderBy(p => (int)p.Key))
+            {
+                if (result.ContainsKey(pair.Key)) continue;
+                var scored = pair.Value.Where(p => !used.Contains(p.Key)).Select(p => new { Index=p.Key,
+                    Score=p.Value + HierarchyScore(model, pair.Key, p.Key, result, candidates) }).OrderByDescending(p => p.Score).ToArray();
+                if (scored.Length == 0 || scored[0].Score < 0 || scored.Length > 1 && scored[0].Score == scored[1].Score) continue;
+                result[pair.Key] = scored[0].Index; used.Add(scored[0].Index);
             }
             inferred = new List<HumanBodyBones>();
             if (model.Format == "XPS") InferXpsTorso(model, result, used, inferred);
             return result;
         }
+        private static int HierarchyScore(PmxModel model, HumanBodyBones slot, int index,
+            Dictionary<HumanBodyBones,int> map, Dictionary<HumanBodyBones, Dictionary<int,int>> choices)
+        {
+            int score = 0;
+            foreach (var edge in Edges())
+            {
+                if (edge.Key != slot && edge.Value != slot) continue;
+                bool child = edge.Key == slot; var other = child ? edge.Value : edge.Key;
+                // MMD upper/lower body are intentionally split; Repair connects those roots.
+                if (edge.Key == HumanBodyBones.Spine && edge.Value == HumanBodyBones.Hips && model.Format != "VRM") continue;
+                if (map.TryGetValue(other, out int known))
+                    score += (child ? Ancestor(model, known, index) : Ancestor(model, index, known)) && known != index ? 80 : -300;
+                else if (choices.TryGetValue(other, out var list) && list.Count > 0)
+                    score += list.Keys.Any(i => i != index && (child ? Ancestor(model, i, index) : Ancestor(model, index, i))) ? 35 : -130;
+            }
+            return score;
+        }
+        private static IEnumerable<KeyValuePair<HumanBodyBones, HumanBodyBones>> Edges()
+        {
+            yield return Edge(HumanBodyBones.Spine, HumanBodyBones.Hips);
+            yield return Edge(HumanBodyBones.Chest, HumanBodyBones.Spine);
+            yield return Edge(HumanBodyBones.UpperChest, HumanBodyBones.Chest);
+            yield return Edge(HumanBodyBones.Neck, HumanBodyBones.Chest);
+            yield return Edge(HumanBodyBones.Head, HumanBodyBones.Neck);
+            yield return Edge(HumanBodyBones.Jaw, HumanBodyBones.Head);
+            foreach (string side in new[] { "Left", "Right" })
+            {
+                Func<string, HumanBodyBones> s = n => (HumanBodyBones)Enum.Parse(typeof(HumanBodyBones), side+n);
+                yield return Edge(s("Eye"), HumanBodyBones.Head);
+                yield return Edge(s("Shoulder"), HumanBodyBones.Chest);
+                yield return Edge(s("UpperArm"), s("Shoulder")); yield return Edge(s("LowerArm"), s("UpperArm")); yield return Edge(s("Hand"), s("LowerArm"));
+                yield return Edge(s("UpperLeg"), HumanBodyBones.Hips); yield return Edge(s("LowerLeg"), s("UpperLeg")); yield return Edge(s("Foot"), s("LowerLeg")); yield return Edge(s("Toes"), s("Foot"));
+                foreach (string finger in new[] { "Thumb", "Index", "Middle", "Ring", "Little" })
+                {
+                    yield return Edge(s(finger+"Proximal"), s("Hand")); yield return Edge(s(finger+"Intermediate"), s(finger+"Proximal")); yield return Edge(s(finger+"Distal"), s(finger+"Intermediate"));
+                }
+            }
+        }
+        private static KeyValuePair<HumanBodyBones,HumanBodyBones> Edge(HumanBodyBones child, HumanBodyBones parent)
+            => new KeyValuePair<HumanBodyBones,HumanBodyBones>(child,parent);
         private static bool Ancestor(PmxModel model, int ancestor, int child)
         {
             for (int steps = 0; child >= 0 && child < model.Bones.Length && steps < model.Bones.Length; steps++)
@@ -124,6 +225,8 @@ namespace Pmx2Fbx
             var indices = AutoMap(model, out var inferred);
             foreach (var custom in options.BoneOverrides)
             {
+                if (!Enum.IsDefined(typeof(HumanBodyBones), custom.Human) || custom.Human == HumanBodyBones.LastBone)
+                    throw new InvalidDataException("手动骨骼插槽无效。");
                 if (custom.PmxIndex == -1) { indices.Remove(custom.Human); continue; }
                 if (custom.PmxIndex < 0 || custom.PmxIndex >= bones.Length) throw new InvalidDataException("手动骨骼映射索引越界。");
                 indices[custom.Human] = custom.PmxIndex;
@@ -133,6 +236,11 @@ namespace Pmx2Fbx
             if (inferred.Count > 0 && report != null)
                 report.Warnings.Add("XPS 部分躯干名称未识别，已按头部、双臂和髋部的共同父子层级补全映射：" + string.Join(", ", inferred) + "。请检查关节位置和动作。");
             var result = indices.ToDictionary(x => x.Key, x => bones[x.Value]);
+            foreach (var pair in indices)
+                report?.Infos.Add("骨骼 " + pair.Key + " = [" + pair.Value + "] " + model.Bones[pair.Value].Name);
+            foreach (var slot in Aliases.Keys.Where(h => !indices.ContainsKey(h)))
+                if (Required.Contains(slot)) report?.Warnings.Add("骨骼 " + slot + " 未能唯一、可靠地识别；请检查映射。");
+            ValidateMapping(model, indices);
             foreach (var pair in result) pair.Value.name = pair.Key.ToString();
             return result;
         }
@@ -154,8 +262,7 @@ namespace Pmx2Fbx
             var missing = Required.Where(x => !map.ContainsKey(x)).ToArray();
             if (missing.Length > 0) throw new InvalidDataException("VRChat 必要骨骼缺失：" + string.Join(", ", missing));
 
-            // Detach mapped bones first so split MMD chains cannot cause a reparenting cycle.
-            foreach (var t in map.Values) t.SetParent(root.transform, true);
+            // Retain valid helper/twist chains; only repair missing semantic ancestry.
             Parent(map, HumanBodyBones.Spine, HumanBodyBones.Hips);
             Parent(map, HumanBodyBones.Chest, HumanBodyBones.Spine);
             Parent(map, HumanBodyBones.UpperChest, HumanBodyBones.Chest);
@@ -175,8 +282,8 @@ namespace Pmx2Fbx
                     Parent(map, slot(finger + "Intermediate"), slot(finger + "Proximal"));
                     Parent(map, slot(finger + "Distal"), slot(finger + "Intermediate"));
                 }
-                map[slot("LowerArm")].SetSiblingIndex(0); map[slot("Hand")].SetSiblingIndex(0);
-                map[slot("LowerLeg")].SetSiblingIndex(0); map[slot("Foot")].SetSiblingIndex(0);
+                FirstBranch(map[slot("UpperArm")], map[slot("LowerArm")]); FirstBranch(map[slot("LowerArm")], map[slot("Hand")]);
+                FirstBranch(map[slot("UpperLeg")], map[slot("LowerLeg")]); FirstBranch(map[slot("LowerLeg")], map[slot("Foot")]);
             }
             foreach (var pair in map)
                 if (pair.Key != HumanBodyBones.Hips && !pair.Value.IsChildOf(map[HumanBodyBones.Hips]))
@@ -191,7 +298,42 @@ namespace Pmx2Fbx
         }
         private static void Parent(Dictionary<HumanBodyBones, Transform> map, HumanBodyBones child, HumanBodyBones parent)
         {
-            if (map.TryGetValue(child, out var c) && map.TryGetValue(parent, out var p)) c.SetParent(p, true);
+            if (map.TryGetValue(child, out var c) && map.TryGetValue(parent, out var p) && !c.IsChildOf(p))
+            {
+                if (p.IsChildOf(c)) throw new InvalidDataException("骨骼映射形成反向父子链：" + parent + " / " + child);
+                c.SetParent(p, true);
+            }
+        }
+        private static void ValidateMapping(PmxModel model, Dictionary<HumanBodyBones,int> map)
+        {
+            var parents = Edges().ToDictionary(e => e.Key, e => e.Value);
+            foreach (var edge in Edges())
+            {
+                if (!map.TryGetValue(edge.Key, out int child)) continue;
+                var parentSlot = edge.Value;
+                while (!map.ContainsKey(parentSlot) && parents.TryGetValue(parentSlot, out var next)) parentSlot = next;
+                if (!map.TryGetValue(parentSlot, out int parent)) continue;
+                if (Ancestor(model, child, parent)) throw new InvalidDataException("骨骼映射父子方向错误：" + edge.Value + " → " + edge.Key);
+                if (edge.Key == HumanBodyBones.Spine && model.Format != "VRM") continue;
+                if (!Ancestor(model, parent, child)) throw new InvalidDataException("骨骼映射不属于同一肢体链：" + edge.Value + " → " + edge.Key + "。请修正映射。");
+                if (!Separated(model.Bones[parent].Position, model.Bones[child].Position))
+                    throw new InvalidDataException("骨骼关节重叠：" + edge.Value + " / " + edge.Key);
+            }
+            foreach (string side in new[] { "Left", "Right" })
+            {
+                var fingerSlots = map.Keys.Where(h => h.ToString().StartsWith(side) && new[] { "Thumb", "Index", "Middle", "Ring", "Little" }.Any(f => h.ToString().Contains(f))).ToArray();
+                foreach (var h in fingerSlots)
+                {
+                    string name = h.ToString();
+                    if (!name.EndsWith("Proximal") && !map.ContainsKey((HumanBodyBones)Enum.Parse(typeof(HumanBodyBones), name.Replace(name.EndsWith("Distal") ? "Distal" : "Intermediate", "Proximal"))))
+                        throw new InvalidDataException("指骨链不完整：" + h + "。请补全或取消该指骨映射。");
+                }
+            }
+        }
+        private static void FirstBranch(Transform parent, Transform descendant)
+        {
+            for (var current = descendant; current && current != parent; current = current.parent)
+                current.SetSiblingIndex(0);
         }
         public static void SetTPose(Dictionary<HumanBodyBones, Transform> map)
         {

@@ -1,6 +1,21 @@
 # 验证记录
 
-验证日期：2026-10-24（0.2.5）。环境：Windows，Unity **2022.3.22f1**，Built-in Render Pipeline，FBX Exporter **4.2.1**，Autodesk FBX SDK for Unity **4.2.1**，Timeline **1.7.6**。
+验证日期：2026-10-26（0.3.0）。环境：Windows，Unity **2022.3.22f1**，Built-in Render Pipeline，FBX Exporter **4.2.1**，Autodesk FBX SDK for Unity **4.2.1**，Timeline **1.7.6**。
+
+## 0.3.0 骨骼识别与 VRM
+
+- 原有 507 项核心断言和完整 PMX / XPS Unity 导出回归通过。
+- 新增 `RigVrmValidation` 的 61 项检查通过；输入均为代码生成的合成骨架 / GLB，没有模型名称特例或第三方素材。
+- 骨骼覆盖 Mixamo 命名空间及前缀、VRoid 中轴 / 四肢、Bip / Valve、日文全角指骨、拇指 0/1/2 与 1/2/3、Bip 首节无后缀的指骨编号。
+- 相同名称通过肢体链区分；等价的重复手腕候选保持未映射；扭转骨名称不识别为肘部。跨侧手动映射被拒绝。
+- 扭转骨在层级修复、T Pose 和 FBX 重新导入后仍位于上下臂之间；绑定在该辅助骨上的顶点静止姿态一致，旋转上臂后辅助骨及网格实际运动。
+- VRM 0.x / 1.0 分别完成 Generic 和 VRChat Humanoid 的 FBX 往返；使用不含人体含义的节点名，验证映射确实来自 VRM 人形定义。
+- 覆盖两种版本坐标转换、非单位关节旋转、逆绑定矩阵、避免重复应用蒙皮网格节点变换、交错缓冲、归一化 UBYTE 权重和稀疏表情 accessor。
+- 内嵌 PNG、MASK 材质及原始镂空阈值在导出后保留；BlendShape 实际变形，手臂旋转驱动蒙皮；截断、越界 joints、重复人形节点及重复 JSON 键被拒绝。
+- 原有真实 GPU 材质深度 / 半透明子网格遮挡测试通过。Shader 本次未修改。
+- 原生 unitypackage 另外在未安装 FBX Exporter 的干净项目中验证编译及 PMX / XPS / VRM 三个入口。
+
+限制：本轮没有用户问题素材，也没有真实 VRM；不能确认用户报告的具体失败已复现，或所有第三方导出器都已覆盖。VRChat SDK Builder、VRChat 实机 / VR 设备与特殊 MToon 视觉效果不属于本轮验证。
 
 ## PMX 核心读取器
 

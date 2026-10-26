@@ -8,6 +8,11 @@ XNALaraMesh (https://github.com/johnzero7/XNALaraMesh) was consulted for the
 XPS binary/ASCII layout and render-group alpha flags; its Blender scripts
 are not redistributed.
 
+The independent VRM/GLB reader and JSON parser were written against the VRM
+Consortium specifications (https://github.com/vrm-c/vrm-specification) and
+Khronos glTF 2.0 specification (https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html).
+No UniVRM or third-party JSON implementation is bundled.
+
 Unity FBX Exporter (`com.unity.formats.fbx`, 4.2.1) is resolved separately by
 Unity Package Manager. It is distributed under the Unity Companion License.
 Its Autodesk FBX SDK dependency (`com.autodesk.fbx`) has its own license and
